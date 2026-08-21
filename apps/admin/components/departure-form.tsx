@@ -1,0 +1,11 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+export function DepartureForm({ tours, selectedTourId = "" }: { tours: Array<{ id:string; name:string }>; selectedTourId?: string }) {
+  const router=useRouter(); const [error,setError]=useState(""); const [pending,setPending]=useState(false);
+  async function submit(formData:FormData){setPending(true);setError("");const body={tourId:String(formData.get("tourId")),code:String(formData.get("code")),startsOn:String(formData.get("startsOn")),endsOn:String(formData.get("endsOn")),capacity:Number(formData.get("capacity")),priceMinor:Number(formData.get("priceMinor")),currency:String(formData.get("currency"))};const response=await fetch(`${apiUrl}/api/v1/admin/departures`,{method:"POST",headers:{"content-type":"application/json","x-demo-role":"OWNER"},body:JSON.stringify(body)});if(!response.ok){const result=await response.json() as {error?:{message?:string}};setError(result.error?.message??"Departure үүсгэж чадсангүй");setPending(false);return;}router.push(`/tours/${body.tourId}`);router.refresh()}
+  return <form className="entity-form panel" action={(data)=>void submit(data)}><div className="form-section"><h2>Departure мэдээлэл</h2><div className="form-grid"><label>Аялал<select name="tourId" defaultValue={selectedTourId} required><option value="" disabled>Аялал сонгох</option>{tours.map((tour)=><option key={tour.id} value={tour.id}>{tour.name}</option>)}</select></label><label>Код<input name="code" defaultValue="AEJ-2026-10-03" required /></label><label>Эхлэх огноо<input name="startsOn" type="date" defaultValue="2026-10-03" required /></label><label>Дуусах огноо<input name="endsOn" type="date" defaultValue="2026-10-09" required /></label><label>Багтаамж<input name="capacity" type="number" min="1" defaultValue="16" required /></label><label>Үнэ<input name="priceMinor" type="number" min="0" defaultValue="4250000" required /></label><label>Валют<select name="currency"><option>MNT</option><option>USD</option></select></label></div></div>{error?<p className="form-error" role="alert">{error}</p>:null}<div className="form-actions"><button className="button button--primary" type="submit" disabled={pending}>{pending?"Нэмж байна...":"Departure нэмэх"}</button></div></form>;
+}

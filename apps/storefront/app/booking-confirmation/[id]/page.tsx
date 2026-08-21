@@ -1,0 +1,7 @@
+import Link from "next/link";
+import { Check, Download, UserRoundCheck } from "lucide-react";
+import { formatCurrencyMinor } from "@toms/config";
+import { getTrip } from "@/lib/api";
+
+export const dynamic = "force-dynamic";
+export default async function ConfirmationPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{email?:string}>}) { const {id}=await params; const {email="bat@example.com"}=await searchParams; const trip=await getTrip(id,email); return <main className="confirmation-wrap"><div className="confirmation-icon"><Check size={32} /></div><h1>Захиалга амжилттай баталгаажлаа</h1><p>Баталгаажуулалт болон нэхэмжлэлийг {email} хаяг руу илгээлээ.</p><section className="confirmation-card"><div><small>Захиалгын дугаар</small><h2>{trip.bookingNumber}</h2><p>{trip.tour.name}<br />{trip.departure.startsOn} → {trip.departure.endsOn}</p></div><div><small>Нэхэмжлэл</small><h2>{trip.invoiceNumber}</h2><p>{formatCurrencyMinor(trip.totalMinor,trip.currency)} · {trip.paymentStatus}</p></div></section><div className="confirmation-actions"><Link className="primary-link" href={`/login?email=${encodeURIComponent(email)}&booking=${trip.id}`}><UserRoundCheck size={16} /> Аяллаа claim хийх</Link><Link className="secondary-link" style={{color:"#071d35",borderColor:"#d9e0e7"}} href={`/account/trips/${trip.id}?email=${encodeURIComponent(email)}`}><Download size={16} /> Demo аялал нээх</Link></div></main>; }

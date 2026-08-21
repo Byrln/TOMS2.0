@@ -1,0 +1,38 @@
+{
+  "name": "toms",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:admin": "pnpm --filter @toms/admin dev",
+    "dev:storefront": "pnpm --filter @toms/storefront dev",
+    "dev:api": "pnpm --filter @toms/api dev",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "turbo build",
+    "e2e": "playwright test",
+    "format": "prettier --write .",
+    "supabase": "supabase"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.62.1",
+    "@types/node": "26.2.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.1",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.6",
+    "supabase": "2.115.0",
+    "turbo": "2.10.11",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}
