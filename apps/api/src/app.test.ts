@@ -18,6 +18,11 @@ describe("TOMS Elysia application boundary", () => {
     const document = await spec.json() as { paths: Record<string, unknown> };
     expect(document.paths).toHaveProperty("/api/v1/admin/tours");
     expect(document.paths).toHaveProperty("/api/v1/storefront/bootstrap");
+    expect(document.paths).toHaveProperty("/api/v1/storefront/home");
+    expect(document.paths).toHaveProperty("/api/v1/storefront/tours");
+    expect(document.paths).toHaveProperty("/api/v1/storefront/destinations");
+    expect(document.paths).toHaveProperty("/api/v1/storefront/departures/{id}/checkout-context");
+    expect(document.paths).toHaveProperty("/api/v1/me/dashboard");
   });
 
   it("rejects protected routes when only legacy demo headers are supplied", async () => {
@@ -52,6 +57,51 @@ describe("TOMS Elysia application boundary", () => {
     const toursResponse = await app.handle(request("/api/v1/tours?locale=en", { headers: { host: "travel.example" } }));
     expect(toursResponse.status).toBe(200);
     await expect(toursResponse.json()).resolves.toMatchObject({ items: [{ slug: "gobi", name: "Gobi" }] });
+  });
+
+  it("serves purpose-built Storefront discovery and checkout read models", async () => {
+    const home = vi.fn(async () => ({ hero: { title: "Travel farther" }, featuredTours: [] }));
+    const listTours = vi.fn(async (_host: string, _locale: "mn" | "en", query: { page: number; q?: string }) => ({ items: [], page: { page: query.page, pageSize: 12, total: 0, pageCount: 0 } }));
+    const listDestinations = vi.fn(async () => ({ items: [{ slug: "altai", name: "Altai" }], page: { page: 1, pageSize: 12, total: 1, pageCount: 1 } }));
+    const checkoutContext = vi.fn(async (_host: string, departureId: string) => ({ departure: { id: departureId, remainingCapacity: 6 }, holdPolicy: { durationMinutes: 15 } }));
+    const services = { storefront: { home, listTours, listDestinations, checkoutContext } } as unknown as ApiServices;
+    const app = createApp({ services });
+
+    const homeResponse = await app.handle(request("/api/v1/storefront/home?locale=en", { headers: { host: "travel.example" } }));
+    expect(homeResponse.status).toBe(200);
+    expect(home).toHaveBeenCalledWith("travel.example", "en");
+
+    const toursResponse = await app.handle(request("/api/v1/storefront/tours?locale=en&page=2&q=altai", { headers: { host: "travel.example" } }));
+    expect(toursResponse.status).toBe(200);
+    expect(listTours).toHaveBeenCalledWith("travel.example", "en", expect.objectContaining({ page: 2, q: "altai" }));
+
+    const destinationsResponse = await app.handle(request("/api/v1/storefront/destinations?locale=en", { headers: { host: "travel.example" } }));
+    expect(destinationsResponse.status).toBe(200);
+    await expect(destinationsResponse.json()).resolves.toMatchObject({ items: [{ slug: "altai" }] });
+
+    const checkoutResponse = await app.handle(request("/api/v1/storefront/departures/dep-alt/checkout-context?locale=en", { headers: { host: "travel.example" } }));
+    expect(checkoutResponse.status).toBe(200);
+    expect(checkoutContext).toHaveBeenCalledWith("travel.example", "dep-alt", "en");
+  });
+
+  it("serves the authenticated traveler dashboard and trip workspaces", async () => {
+    const token = { userId: "81111111-1111-4111-8111-111111111111", claims: { sub: "81111111-1111-4111-8111-111111111111" }, token: "signed-token" };
+    const dashboard = vi.fn(async () => ({ currentTrip: null, latestMessage: null }));
+    const documents = vi.fn(async () => ({ readinessPercent: 75, items: [] }));
+    const payments = vi.fn(async () => ({ paymentStatus: "PARTIALLY_PAID", transactions: [] }));
+    const messages = vi.fn(async () => ({ conversations: [], activeConversation: null }));
+    const profile = vi.fn(async () => ({ id: token.userId, email: "bat@example.com" }));
+    const services = { traveler: { dashboard, documents, payments, messages, profile } } as unknown as ApiServices;
+    const app = createApp({ services, verifyAccessToken: vi.fn(async () => token) });
+    const headers = { authorization: "Bearer signed-token" };
+
+    expect((await app.handle(request("/api/v1/me/dashboard?locale=en", { headers }))).status).toBe(200);
+    expect((await app.handle(request("/api/v1/me/trips/booking-1/documents?locale=en", { headers }))).status).toBe(200);
+    expect((await app.handle(request("/api/v1/me/trips/booking-1/payments?locale=en", { headers }))).status).toBe(200);
+    expect((await app.handle(request("/api/v1/me/messages?locale=en", { headers }))).status).toBe(200);
+    expect((await app.handle(request("/api/v1/me/profile?locale=en", { headers }))).status).toBe(200);
+    expect(dashboard).toHaveBeenCalledWith(token, "en");
+    expect(documents).toHaveBeenCalledWith(token, "booking-1", "en");
   });
 
   it("requires and forwards idempotency keys for inventory holds and checkout", async () => {
@@ -120,7 +170,7 @@ describe("TOMS Elysia application boundary", () => {
       const response = await app.handle(request(`/api/v1/admin/${resource}`, { headers: { authorization: "Bearer signed-token", "x-toms-locale": "en" } }));
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({ data: [{ id: `${resource}-1`, locale: "en" }] });
-      expect(list).toHaveBeenCalledWith(actor, resource, "en");
+      expect(list).toHaveBeenCalledWith(actor, resource, "en", expect.objectContaining({ page: 1, pageSize: 25 }));
     }
   });
 });

@@ -1,8 +1,2 @@
-import Image from "next/image";
-import Link from "next/link";
-import { getTrip, getTrips } from "@/lib/api";
-import { getServerI18n } from "@/lib/i18n";
-import { statusLabel } from "@toms/i18n";
-
-export const dynamic = "force-dynamic";
-export default async function TripsPage() { const { locale, t }=await getServerI18n(); const bookings=await getTrips(); const trips=await Promise.all(bookings.map((booking)=>getTrip(booking.id))); const organizerName=trips[0]?.travelers[0]?.fullName??""; return <main className="portal-shell"><aside className="portal-sidebar"><h2>{t("nav.myTrips")}</h2><nav><Link href="/account/trips"><span>{t("nav.dashboard")}</span></Link><Link href="/account/trips"><span>{t("nav.myTrips")}</span></Link><Link href="/account/trips"><span>{t("portal.payments")}</span></Link><Link href="/account/trips"><span>{t("portal.documents")}</span></Link><Link href="/contact"><span>{t("public.help")}</span></Link></nav></aside><section className="portal-content"><h1>{t("portal.greeting", { name: organizerName })}</h1><p>{t("portal.greetingDescription")}</p><div className="trip-grid">{trips.map((trip)=><article className="trip-card" key={trip.id}><Image src={trip.tour.heroImageUrl} width={560} height={320} alt={trip.tour.name} /><div className="trip-card__body"><h2>{trip.tour.name}</h2><p>{trip.departure.startsOn} → {trip.departure.endsOn}<br />{t("common.people", { count: trip.travelers.length })} · {statusLabel(locale, trip.status)}</p><Link className="primary-link" href={`/account/trips/${trip.id}`}>{t("portal.openTrip")}</Link></div></article>)}</div></section></main>; }
+import { redirect } from "next/navigation";
+export default function LegacyTripsPage() { redirect("/account/trips"); }

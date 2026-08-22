@@ -1,3 +1,9 @@
-import ConfirmationPage from "@/app/booking-confirmation/[id]/page";
+import Link from "next/link";
+import { Check, FileText, Mail, UserRoundCheck } from "lucide-react";
+import { Button, Card, CardContent, StatusBadge } from "@toms/storefront-ui";
+import { formatCurrencyMinor } from "@toms/config";
+import { getTrip } from "@/lib/api";
+import { getServerI18n } from "@/lib/i18n";
+
 export const dynamic = "force-dynamic";
-export default ConfirmationPage;
+export default async function ConfirmationPage({ params }: { params: Promise<{ id: string }> }) { const { id } = await params; const [trip, { locale, t }] = await Promise.all([getTrip(id), getServerI18n()]); return <main className="confirmation-wrap"><div className="confirmation-icon"><Check /></div><p className="section-eyebrow">BOOKING CONFIRMED</p><h1>{t("confirmation.success")}</h1><p>Your confirmation and next steps are ready in My TOMS.</p><Card className="confirmation-card"><CardContent><div><small>{t("confirmation.bookingNumber")}</small><h2>{trip.booking.bookingNumber}</h2><p>{trip.trip.tourName}<br />{trip.trip.startsOn} → {trip.trip.endsOn}</p></div><div><small>Payment</small><h2>{formatCurrencyMinor(trip.paymentSummary.totalMinor, trip.paymentSummary.currency, locale === "mn" ? "mn-MN" : "en-US")}</h2><StatusBadge tone={trip.paymentSummary.dueMinor === 0 ? "success" : "warning"}>{trip.paymentSummary.dueMinor === 0 ? "PAID" : "BALANCE DUE"}</StatusBadge></div></CardContent></Card><section className="confirmation-next"><h2>What happens next</h2><div><span><Mail />A confirmation email has been sent.</span><span><FileText />Complete {trip.actionsRequired.length} required actions in your portal.</span><span><UserRoundCheck />Your journey team is available in Messages.</span></div></section><div className="confirmation-actions"><Button size="lg" render={<Link href={`/account/trips/${trip.booking.id}`} />}><UserRoundCheck />{t("confirmation.openTrip")}</Button><Button size="lg" variant="outline" render={<Link href={`/account/trips/${trip.booking.id}/documents`} />}><FileText />{t("portal.documents")}</Button></div></main>; }

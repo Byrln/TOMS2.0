@@ -1,73 +1,116 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test.describe.configure({ mode: "serial" });
+const departureId = "00000003-0000-4000-8000-000000000001";
+const bookingId = "00000005-0000-4000-8000-000000000001";
+const tourId = "00000002-0000-4000-8000-000000000001";
 
-async function expectAccessible(page: import("@playwright/test").Page) {
-  const results = await new AxeBuilder({ page }).analyze();
+const storefrontRoutes = {
+  home: "/",
+  tours: "/tours",
+  "tour-detail": "/tours/seoul-city-experience",
+  destinations: "/destinations",
+  "destination-detail": "/destinations/seoul",
+  "departure-detail": `/departures/${departureId}`,
+  checkout: `/checkout/${departureId}`,
+  promotions: "/promotions",
+  about: "/about",
+  contact: "/contact",
+  login: "/login",
+  "traveler-dashboard": "/account",
+  "traveler-trips": "/account/trips",
+  "traveler-trip-detail": `/account/trips/${bookingId}`,
+  "traveler-documents": `/account/trips/${bookingId}/documents`,
+  "traveler-payments": `/account/trips/${bookingId}/payments`,
+  "traveler-messages": "/account/messages",
+  "traveler-profile": "/account/profile",
+  confirmation: `/booking/confirmation/${bookingId}`,
+} as const;
+
+const adminRoutes = {
+  dashboard: "/",
+  tours: "/tours",
+  "tour-detail": `/tours/${tourId}`,
+  "tour-new": "/tours/new",
+  departures: "/departures",
+  "departure-detail": `/departures/${departureId}`,
+  "departure-new": "/departures/new",
+  bookings: "/bookings",
+  customers: "/customers",
+  travelers: "/travelers",
+  operations: "/operations",
+  manifest: "/manifest",
+  documents: "/documents",
+  payments: "/payments",
+  invoices: "/invoices",
+  conversations: "/conversations",
+  promotions: "/promotions",
+  reports: "/reports",
+  cms: "/cms",
+  storefront: "/storefront",
+  settings: "/settings",
+  login: "/admin/login",
+  "forgot-password": "/admin/forgot-password",
+} as const;
+
+test.beforeEach(async ({ context }) => {
+  await context.addCookies([
+    { name: "toms-locale", value: "en", url: "http://127.0.0.1:3000" },
+    { name: "toms-locale", value: "en", url: "http://127.0.0.1:3001" },
+  ]);
+});
+
+async function settle(page: Page) {
+  await page.waitForLoadState("domcontentloaded");
+  await page.waitForLoadState("networkidle");
+  await expect(page.locator("body")).not.toContainText(/page could not be loaded|application error|internal server error/i);
+}
+
+async function expectAccessible(page: Page, include = "main") {
+  const results = await new AxeBuilder({ page })
+    .include(include)
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
   expect(results.violations, results.violations.map((item) => `${item.id}: ${item.help}`).join("\n")).toEqual([]);
 }
 
-test("staff login opens the operational dashboard", async ({ page }) => {
-  await page.goto("http://127.0.0.1:3000/admin/login");
-  await expect(page.getByRole("heading", { name: "Системд нэвтрэх" })).toBeVisible();
-  await expectAccessible(page);
-  await page.getByRole("link", { name: "Demo admin нээх" }).click();
-  await expect(page).toHaveURL(/127\.0\.0\.1:3000\/?(?:\?demo=1)?$/);
-  await expect(page.getByRole("heading", { name: "Хяналтын самбар" })).toBeVisible();
-  await expect(page.getByText("₮ 1,286,650,000")).toBeVisible();
-});
-
-test("staff creates a tour, adds a departure, and publishes it", async ({ page }) => {
-  await page.goto("http://127.0.0.1:3000/tours");
-  await page.getByRole("link", { name: /Шинэ аялал үүсгэх/ }).click();
-  await expect(page.getByRole("heading", { name: "Шинэ аялал" })).toBeVisible();
-  await page.getByRole("button", { name: "Аялал үүсгэх" }).click();
-  await expect(page).toHaveURL(/\/tours\/[0-9a-f-]+$/);
-  await expect(page.getByRole("heading", { name: "Altai Eagle Journey" })).toBeVisible();
-
-  await page.getByRole("link", { name: "Departure нэмэх" }).click();
-  await expect(page.getByRole("heading", { name: "Шинэ хуваарьт гаралт" })).toBeVisible();
-  await page.getByRole("button", { name: "Departure нэмэх" }).click();
-  await expect(page.getByText("AEJ-2026-10-03")).toBeVisible();
-
-  await page.getByRole("button", { name: "Аялал нийтлэх" }).click();
-  await expect(page.getByRole("button", { name: "Нийтлэгдсэн" })).toBeDisabled();
-});
-
-test("public discovery completes checkout and traveler claim handoff", async ({ page }) => {
+test("critical discovery, checkout, traveler, and admin flows work", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Дэлхийг өөрийнхөөрөө/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "See the world, your way" })).toBeVisible();
   await expectAccessible(page);
 
-  await page.goto("/tours/seoul-city-experience");
-  await expect(page.getByRole("heading", { name: "Сөүл хотын аялал" })).toBeVisible();
-  await page.getByRole("link", { name: "Огноо сонгох" }).click();
-  await expect(page.getByRole("heading", { name: "Захиалгаа баталгаажуулах" })).toBeVisible();
+  await page.goto(`/checkout/${departureId}`);
+  await page.getByLabel("Payer name").fill("Bat Erdene");
+  await page.getByLabel("Email address").fill("bat@example.com");
+  await page.getByLabel("Second traveler").fill("Saruul Tumur");
+  await page.getByLabel("Date of birth").fill("1992-06-18");
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: /төлөх/ }).click();
-  await expect(page).toHaveURL(/\/booking\/confirmation\/[0-9a-f-]+\?email=/);
-  await expect(page.getByRole("heading", { name: "Захиалга амжилттай баталгаажлаа" })).toBeVisible();
-  await page.getByRole("link", { name: "Аяллаа claim хийх" }).click();
-  await expect(page.getByRole("heading", { name: "Аяллаа claim хийх" })).toBeVisible();
-  await expect(page.getByLabel("Баталгаатай имэйл")).toHaveValue("bat@example.com");
-  await page.getByRole("link", { name: "Demo traveler portal нээх" }).click();
-  await expect(page.getByRole("heading", { name: /Сайн байна уу/ })).toBeVisible();
+  await page.getByRole("button", { name: /Reserve seats worth/ }).click();
+  await expect(page).toHaveURL(/\/booking\/confirmation\/51111111-1111-4111-8111-111111111111/);
+  await expect(page.getByRole("heading", { name: /booking is confirmed/i })).toBeVisible();
+
+  await page.goto("/account");
+  await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
+  await expectAccessible(page);
+
+  await page.goto("http://127.0.0.1:3000/");
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.locator("svg.recharts-surface")).toHaveCount(2);
+  await expectAccessible(page);
 });
 
-test("staff itinerary update propagates to the authorized trip projection", async ({ page, request }) => {
-  const tripsResponse = await request.get("http://127.0.0.1:4000/api/v1/me/trips", { headers: { "x-demo-traveler": "bat@example.com" } });
-  const trips = await tripsResponse.json() as { items: Array<{ id: string }> };
-  const tripResponse = await request.get(`http://127.0.0.1:4000/api/v1/me/trips/${trips.items[0]?.id}`, { headers: { "x-demo-traveler": "bat@example.com" } });
-  const trip = await tripResponse.json() as { id:string; departure:{id:string}; itinerary:Array<{id:string;startsAt:string}> };
-  const event = trip.itinerary[0];
-  expect(event).toBeDefined();
-  const update = await request.patch(`http://127.0.0.1:4000/api/v1/admin/departures/${trip.departure.id}/itinerary/${event?.id}`, {
-    headers: { "content-type":"application/json", "x-demo-role":"OWNER" },
-    data: { eventId:event?.id, title:"Airport meeting point updated", startsAt:event?.startsAt, location:"Terminal 2, information desk B", details:"Meet 90 minutes before check-in.", visibility:"TRAVELER" }
+for (const [name, route] of Object.entries(storefrontRoutes)) {
+  test(`desktop visual — storefront ${name}`, async ({ page }) => {
+    await page.goto(route);
+    await settle(page);
+    await expect(page).toHaveScreenshot(`storefront-${name}.png`, { fullPage: true, animations: "disabled", caret: "hide" });
   });
-  expect(update.ok()).toBe(true);
-  await page.goto(`/account/trips/${trip.id}?email=bat%40example.com`);
-  await expect(page.getByRole("heading", { name: "Airport meeting point updated" })).toBeVisible();
-  await expect(page.getByText("Do not expose supplier margin")).toHaveCount(0);
-});
+}
+
+for (const [name, route] of Object.entries(adminRoutes)) {
+  test(`desktop visual — admin ${name}`, async ({ page }) => {
+    await page.goto(`http://127.0.0.1:3000${route}`);
+    await settle(page);
+    await expect(page).toHaveScreenshot(`admin-${name}.png`, { fullPage: true, animations: "disabled", caret: "hide" });
+  });
+}

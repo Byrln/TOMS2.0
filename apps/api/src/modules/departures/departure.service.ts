@@ -10,7 +10,7 @@ function claims(actor: Actor): VerifiedRlsClaims {
 }
 
 export function createDepartureService(client: DatabaseClient) {
-  return {
+  const service = {
     async list(actor: Actor) {
       const rows = await withUserRlsContext(client.db, claims(actor), (tx) => listDepartures(tx, actor.tenantId));
       return { data: rows.map((row) => ({ ...row.departure, tourNameI18n: row.tourName, tourSlug: row.tourSlug })), pagination: { page: 1, pageSize: rows.length, total: rows.length, pageCount: rows.length > 0 ? 1 : 0 } };
@@ -26,5 +26,21 @@ export function createDepartureService(client: DatabaseClient) {
         return created;
       });
     },
+    async get(actor: Actor, departureId: string) {
+      const result = await service.list(actor);
+      const departure = result.data.find((item) => item.id === departureId);
+      if (!departure) throw new ApiError(404, "DEPARTURE_NOT_FOUND", "Departure not found");
+      return departure;
+    },
+    async readiness(actor: Actor, departureId: string) {
+      const departure = await service.get(actor, departureId);
+      const occupancyPercent = Math.round(departure.confirmedCount / Math.max(departure.capacity, 1) * 100);
+      return { departureId, overallPercent: occupancyPercent, checks: [{ id: "inventory", label: "Inventory", status: departure.confirmedCount > 0 ? "READY" : "ATTENTION", percent: occupancyPercent }] };
+    },
+    async manifest(actor: Actor, departureId: string) {
+      await service.get(actor, departureId);
+      return { departureId, items: [], summary: { travelers: 0, documentsReady: 0, visaAttention: 0 } };
+    },
   };
+  return service;
 }

@@ -1,6 +1,19 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { AdminShell, DataTable, StatusBadge } from "./index";
+import {
+  AdminShell,
+  Avatar,
+  AvatarFallback,
+  Button,
+  DataTable,
+  Dialog,
+  DialogTitle,
+  Field,
+  FieldGroup,
+  FieldLabel,
+  Input,
+  StatusBadge,
+} from "./index";
 import { LocaleProvider } from "@toms/i18n/react";
 
 const renderLocalized = (node: React.ReactNode, locale: "mn" | "en" = "mn") => renderToStaticMarkup(<LocaleProvider initialLocale={locale}>{node}</LocaleProvider>);
@@ -37,5 +50,28 @@ describe("admin UI system", () => {
     const html = renderLocalized(<DataTable columns={[{ key: "name", label: "Нэр" }]} rows={[{ id: "1", name: "Классик Европ" }]} />);
     expect(html).toContain("<table");
     expect(html).toContain("Классик Европ");
+  });
+
+  it("exports accessible Base UI shadcn form and overlay primitives", () => {
+    const html = renderToStaticMarkup(
+      <>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="search">Search bookings</FieldLabel>
+            <Input id="search" name="search" />
+          </Field>
+        </FieldGroup>
+        <Dialog><DialogTitle>Booking detail</DialogTitle></Dialog>
+        <Avatar>
+          <AvatarFallback>BO</AvatarFallback>
+        </Avatar>
+        <Button>Save view</Button>
+      </>,
+    );
+
+    expect(html).toContain('for="search"');
+    expect(html).toContain("Booking detail");
+    expect(html).toContain("BO");
+    expect(html).toContain("Save view");
   });
 });

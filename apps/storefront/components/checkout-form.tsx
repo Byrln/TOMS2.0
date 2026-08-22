@@ -4,260 +4,28 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
-import { ShieldCheck } from "lucide-react";
+import { CalendarDays, Clock3, LockKeyhole, ShieldCheck, UsersRound } from "lucide-react";
+import type { StorefrontCheckoutContext } from "@toms/contracts";
 import { formatCurrencyMinor } from "@toms/config";
 import { intlLocale } from "@toms/i18n";
 import { useLocale } from "@toms/i18n/react";
-import type { Departure, Tour } from "@/lib/api";
+import { Alert, AlertDescription, AlertTitle, Button, Checkbox, Field, FieldDescription, FieldError, FieldLabel, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from "@toms/storefront-ui";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+type FormValue = { fullName: string; email: string; companionName: string; nationality: string; dateOfBirth: string; dietaryRequirements: string; specialRequirements: string; promotionCode: string; termsAccepted: boolean };
 
-type FormValue = {
-  fullName: string;
-  email: string;
-  companionName: string;
-  nationality: string;
-  termsAccepted: boolean;
-};
-
-async function checkout(input: { values: FormValue; departure: Departure; locale: "mn" | "en" }) {
-  const storefrontHost = window.location.hostname;
-  const holdKey = `hold-${crypto.randomUUID()}`;
-  const holdResponse = await fetch(`${apiUrl}/api/v1/booking-holds`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "idempotency-key": holdKey, "x-toms-storefront-host": storefrontHost, "x-toms-locale": input.locale },
-    body: JSON.stringify({
-      departureId: input.departure.id,
-      partySize: 2,
-    }),
-  });
-  if (!holdResponse.ok)
-    throw new Error("HOLD_FAILED");
-  const hold = (await holdResponse.json()) as { id: string };
-  const checkoutKey = `checkout-${crypto.randomUUID()}`;
-  const checkoutResponse = await fetch(`${apiUrl}/api/v1/checkout/sessions`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "idempotency-key": checkoutKey, "x-toms-storefront-host": storefrontHost, "x-toms-locale": input.locale },
-    body: JSON.stringify({
-      holdId: hold.id,
-      payer: { fullName: input.values.fullName, email: input.values.email },
-      travelers: [
-        {
-          fullName: input.values.fullName,
-          nationality: input.values.nationality,
-        },
-        {
-          fullName: input.values.companionName,
-          nationality: input.values.nationality,
-        },
-      ],
-      termsAccepted: input.values.termsAccepted,
-    }),
-  });
-  if (!checkoutResponse.ok)
-    throw new Error("CHECKOUT_FAILED");
-  return checkoutResponse.json() as Promise<{
-    id: string;
-    organizerEmail: string;
-  }>;
+async function checkout(input: { values: FormValue; context: StorefrontCheckoutContext; locale: "mn" | "en" }) {
+  const headers = { "content-type": "application/json", "x-toms-storefront-host": window.location.hostname, "x-toms-locale": input.locale };
+  const holdResponse = await fetch(`${apiUrl}/api/v1/booking-holds`, { method: "POST", headers: { ...headers, "idempotency-key": `hold-${crypto.randomUUID()}` }, body: JSON.stringify({ departureId: input.context.departure.id, partySize: 2 }) });
+  if (!holdResponse.ok) throw new Error("HOLD_FAILED"); const hold = await holdResponse.json() as { id: string };
+  const checkoutResponse = await fetch(`${apiUrl}/api/v1/checkout/sessions`, { method: "POST", headers: { ...headers, "idempotency-key": `checkout-${crypto.randomUUID()}` }, body: JSON.stringify({ holdId: hold.id, payer: { fullName: input.values.fullName, email: input.values.email }, travelers: [{ fullName: input.values.fullName, nationality: input.values.nationality, dateOfBirth: input.values.dateOfBirth, dietaryRequirements: input.values.dietaryRequirements, specialRequirements: input.values.specialRequirements }, { fullName: input.values.companionName, nationality: input.values.nationality }], promotionCode: input.values.promotionCode || undefined, termsAccepted: input.values.termsAccepted }) });
+  if (!checkoutResponse.ok) throw new Error("CHECKOUT_FAILED"); return checkoutResponse.json() as Promise<{ id: string; organizerEmail: string }>;
 }
 
-export function CheckoutForm({
-  tour,
-  departure,
-}: {
-  tour: Tour;
-  departure: Departure;
-}) {
-  const router = useRouter();
-  const { locale, t } = useLocale();
-  const currencyLocale = intlLocale(locale);
-  const regions = new Intl.DisplayNames([currencyLocale], { type: "region" });
-  const mutation = useMutation({
-    mutationFn: checkout,
-    onSuccess: (booking) => router.push(`/login?email=${encodeURIComponent(booking.organizerEmail)}&booking=${booking.id}`),
-  });
-  const form = useForm({
-    defaultValues: {
-      fullName: "",
-      email: "",
-      companionName: "",
-      nationality: "MN",
-      termsAccepted: false,
-    } as FormValue,
-    onSubmit: async ({ value }) => {
-      await mutation.mutateAsync({ values: value, departure, locale });
-    },
-  });
-  const total = departure.priceMinor * 2;
-  return (
-    <div className="checkout-layout">
-      <form
-        className="checkout-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          void form.handleSubmit();
-        }}
-      >
-        <h1>{t("checkout.reviewTitle")}</h1>
-        <p>{t("checkout.reviewDescription")}</p>
-        <div className="form-grid">
-          <form.Field
-            name="fullName"
-            validators={{
-              onChange: ({ value }) =>
-                value.trim().length < 2 ? t("checkout.fullNameValidation") : undefined,
-            }}
-          >
-            {(field) => (
-              <label className="field">
-                <span>{t("checkout.payerName")}</span>
-                <input
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                {field.state.meta.errors[0] ? (
-                  <small>{String(field.state.meta.errors[0])}</small>
-                ) : null}
-              </label>
-            )}
-          </form.Field>
-          <form.Field
-            name="email"
-            validators={{
-              onChange: ({ value }) =>
-                /\S+@\S+\.\S+/.test(value) ? undefined : t("validation.email"),
-            }}
-          >
-            {(field) => (
-              <label className="field">
-                <span>{t("auth.email")}</span>
-                <input
-                  type="email"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                {field.state.meta.errors[0] ? (
-                  <small>{String(field.state.meta.errors[0])}</small>
-                ) : null}
-              </label>
-            )}
-          </form.Field>
-          <form.Field
-            name="companionName"
-            validators={{
-              onChange: ({ value }) =>
-                value.trim().length < 2 ? t("checkout.secondTravelerValidation") : undefined,
-            }}
-          >
-            {(field) => (
-              <label className="field">
-                <span>{t("checkout.secondTraveler")}</span>
-                <input
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                {field.state.meta.errors[0] ? (
-                  <small>{String(field.state.meta.errors[0])}</small>
-                ) : null}
-              </label>
-            )}
-          </form.Field>
-          <form.Field name="nationality">
-            {(field) => (
-              <label className="field">
-                <span>{t("checkout.nationality")}</span>
-                <select
-                  value={field.state.value}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                >
-                  <option value="MN">{regions.of("MN")}</option>
-                  <option value="US">{regions.of("US")}</option>
-                  <option value="KR">{regions.of("KR")}</option>
-                </select>
-              </label>
-            )}
-          </form.Field>
-        </div>
-        <form.Field
-          name="termsAccepted"
-          validators={{
-            onChange: ({ value }) =>
-              value ? undefined : t("checkout.acceptTermsValidation"),
-          }}
-        >
-          {(field) => (
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={field.state.value}
-                onChange={(event) => field.handleChange(event.target.checked)}
-              />
-              <span>{t("checkout.termsLong")}</span>
-            </label>
-          )}
-        </form.Field>
-        {mutation.error ? (
-          <div className="checkout-error" role="alert">
-            {mutation.error.message === "HOLD_FAILED" ? t("checkout.holdFailed") : t("checkout.checkoutFailed")}
-          </div>
-        ) : null}
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting]}
-        >
-          {([canSubmit, isSubmitting]) => (
-            <button
-              className="checkout-submit"
-              type="submit"
-              disabled={!canSubmit || isSubmitting || mutation.isPending}
-            >
-              {isSubmitting || mutation.isPending
-                ? t("checkout.processing")
-                : t("checkout.reserveAmount", { amount: formatCurrencyMinor(total, departure.currency, currencyLocale) })}
-            </button>
-          )}
-        </form.Subscribe>
-        <small>
-          <ShieldCheck size={13} /> {t("checkout.inventoryNotice")}
-        </small>
-      </form>
-      <aside className="checkout-summary">
-        <Image
-          src={tour.heroImageUrl}
-          alt={tour.name}
-          width={600}
-          height={340}
-          loading="eager"
-          fetchPriority="high"
-        />
-        <div className="checkout-summary__body">
-          <h2>{tour.name}</h2>
-          <div className="summary-row">
-            <span>{t("checkout.date")}</span>
-            <strong>
-              {departure.startsOn} → {departure.endsOn}
-            </strong>
-          </div>
-          <div className="summary-row">
-            <span>{t("checkout.traveler")}</span>
-            <strong>2</strong>
-          </div>
-          <div className="summary-row">
-            <span>{t("checkout.unitPrice")}</span>
-            <strong>
-              {formatCurrencyMinor(departure.priceMinor, departure.currency, currencyLocale)}
-            </strong>
-          </div>
-          <div className="summary-row total">
-            <span>{t("checkout.total")}</span>
-            <strong>{formatCurrencyMinor(total, departure.currency, currencyLocale)}</strong>
-          </div>
-        </div>
-      </aside>
-    </div>
-  );
+export function CheckoutForm({ context }: { context: StorefrontCheckoutContext }) {
+  const router = useRouter(); const { locale, t } = useLocale(); const mutation = useMutation({ mutationFn: checkout, onSuccess: (booking) => router.push(`/booking/confirmation/${booking.id}?email=${encodeURIComponent(booking.organizerEmail)}`) });
+  const form = useForm({ defaultValues: { fullName: "", email: "", companionName: "", nationality: "MN", dateOfBirth: "", dietaryRequirements: "", specialRequirements: "", promotionCode: "", termsAccepted: false } as FormValue, onSubmit: async ({ value }) => { await mutation.mutateAsync({ values: value, context, locale }); } });
+  const discount = context.pricing.eligiblePromotions[0]?.discountMinor ?? 0; const subtotal = context.pricing.perTravelerMinor * 2; const total = subtotal + context.pricing.feesMinor - discount;
+  const textField = (name: "fullName" | "email" | "companionName" | "dateOfBirth" | "dietaryRequirements" | "specialRequirements" | "promotionCode", label: string, type = "text", required = false) => <form.Field name={name} {...(required ? { validators: { onChange: ({ value }: { value: string }) => String(value).trim().length < 2 ? `${label} is required` : undefined } } : {})}>{(field) => <Field data-invalid={field.state.meta.errors.length > 0}><FieldLabel htmlFor={name}>{label}</FieldLabel>{name === "dietaryRequirements" || name === "specialRequirements" ? <Textarea id={name} value={field.state.value} onBlur={field.handleBlur} onChange={(event) => field.handleChange(event.target.value)} /> : <Input id={name} type={type} value={field.state.value} onBlur={field.handleBlur} onChange={(event) => field.handleChange(event.target.value)} required={required} />}<FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} /></Field>}</form.Field>;
+  return <div className="checkout-layout"><form className="checkout-form" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); void form.handleSubmit(); }}><div className="checkout-form__intro"><p className="section-eyebrow">SECURE CHECKOUT</p><h1>{t("checkout.reviewTitle")}</h1><p>{t("checkout.reviewDescription")}</p><span><Clock3 /> Your places are held for {context.holdPolicy.durationMinutes} minutes after you continue.</span></div><section><h2>Contact</h2><div className="form-grid">{textField("fullName", t("checkout.payerName"), "text", true)}{textField("email", t("auth.email"), "email", true)}</div></section><section><h2>Travelers</h2><div className="form-grid">{textField("companionName", t("checkout.secondTraveler"), "text", true)}{textField("dateOfBirth", "Date of birth", "date", true)}<form.Field name="nationality">{(field) => <Field><FieldLabel>{t("checkout.nationality")}</FieldLabel><Select value={field.state.value} onValueChange={(value) => field.handleChange(String(value))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="MN">Mongolia</SelectItem><SelectItem value="KR">South Korea</SelectItem><SelectItem value="US">United States</SelectItem></SelectContent></Select></Field>}</form.Field>{textField("dietaryRequirements", "Dietary requirements")}{textField("specialRequirements", "Special requirements")}</div></section><section><h2>Promotion & payment</h2>{textField("promotionCode", "Promotion code")}<div className="payment-methods">{context.paymentMethods.map((method) => <div key={method}><LockKeyhole /><strong>{method}</strong><span>Secure payment after inventory confirmation</span></div>)}</div></section><form.Field name="termsAccepted" validators={{ onChange: ({ value }) => value ? undefined : t("checkout.acceptTermsValidation") }}>{(field) => <Field data-invalid={field.state.meta.errors.length > 0}><FieldLabel className="terms-field"><Checkbox checked={field.state.value} onCheckedChange={(checked) => field.handleChange(Boolean(checked))} /><span>{t("checkout.termsLong")}</span></FieldLabel><FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} /></Field>}</form.Field>{mutation.error ? <Alert variant="destructive"><AlertTitle>Could not complete checkout</AlertTitle><AlertDescription>{mutation.error.message === "HOLD_FAILED" ? t("checkout.holdFailed") : t("checkout.checkoutFailed")}</AlertDescription></Alert> : null}<form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>{([canSubmit, isSubmitting]) => <Button className="checkout-submit" size="lg" type="submit" disabled={!canSubmit || isSubmitting || mutation.isPending}>{isSubmitting || mutation.isPending ? t("checkout.processing") : t("checkout.reserveAmount", { amount: formatCurrencyMinor(total, context.pricing.currency, intlLocale(locale)) })}</Button>}</form.Subscribe><FieldDescription><ShieldCheck /> {t("checkout.inventoryNotice")}</FieldDescription></form><aside className="checkout-summary"><Image src={context.tour.heroImageUrl} alt={context.tour.name} width={600} height={340} loading="eager" fetchPriority="high" /><div className="checkout-summary__body"><p className="section-eyebrow">YOUR JOURNEY</p><h2>{context.tour.name}</h2><div className="summary-row"><span><CalendarDays />{t("checkout.date")}</span><strong>{context.departure.startsOn} → {context.departure.endsOn}</strong></div><div className="summary-row"><span><UsersRound />{t("checkout.traveler")}</span><strong>2</strong></div><div className="summary-row"><span>{t("checkout.unitPrice")}</span><strong>{formatCurrencyMinor(context.pricing.perTravelerMinor, context.pricing.currency, intlLocale(locale))}</strong></div>{discount > 0 ? <div className="summary-row"><span>Promotion</span><strong>−{formatCurrencyMinor(discount, context.pricing.currency, intlLocale(locale))}</strong></div> : null}<div className="summary-row total"><span>{t("checkout.total")}</span><strong>{formatCurrencyMinor(total, context.pricing.currency, intlLocale(locale))}</strong></div><small>{context.departure.remainingCapacity} places available at last check</small></div></aside></div>;
 }

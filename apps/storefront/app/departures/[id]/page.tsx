@@ -1,18 +1,15 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, UsersRound } from "lucide-react";
+import { CalendarDays, Check, Clock3, ShieldCheck, UsersRound } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Badge, Button, Card, CardContent, Progress } from "@toms/storefront-ui";
 import { formatCurrencyMinor } from "@toms/config";
-import { getTours } from "@/lib/api";
-import { getServerI18n } from "@/lib/i18n";
 import { intlLocale } from "@toms/i18n";
+import { getDeparture } from "@/lib/api";
+import { getServerI18n } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 export default async function DeparturePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const tours = await getTours();
-  const { locale, t } = await getServerI18n();
-  const tour = tours.find((item) => item.departures.some((departure) => departure.id === id));
-  const departure = tour?.departures.find((item) => item.id === id);
-  if (!tour || !departure) notFound();
-  return <main><header className="page-hero"><div><p>{tour.destinations.join(" · ")}</p><h1>{tour.name}</h1><p>{departure.code}</p></div></header><section className="section"><div className="page-container departure-detail"><article className="portal-panel"><h2>{t("tour.departureInformation")}</h2><div className="summary-row"><span><CalendarDays size={15} /> {t("checkout.date")}</span><strong>{departure.startsOn} → {departure.endsOn}</strong></div><div className="summary-row"><span><UsersRound size={15} /> {t("admin.capacity")}</span><strong>{departure.confirmedCount} / {departure.capacity}</strong></div><div className="summary-row total"><span>{t("checkout.unitPrice")}</span><strong>{formatCurrencyMinor(departure.priceMinor, departure.currency, intlLocale(locale))}</strong></div><Link className="primary-link" href={`/checkout/${departure.id}`}>{t("tour.bookNow")}</Link></article><article className="portal-panel"><h2>{t("tours.itinerary")}</h2><p>{tour.description}</p><Link className="secondary-link departure-back" href={`/tours/${tour.slug}`}>{t("tour.viewDetails")}</Link></article></div></section></main>;
+  const { id } = await params; const { locale, t } = await getServerI18n(); let departure; try { departure = await getDeparture(id); } catch { notFound(); }
+  return <main><header className="departure-hero"><Image src={departure.tour.heroImage.url} alt={departure.tour.heroImage.alt} fill priority sizes="100vw" /><div><p className="section-eyebrow">{departure.tour.destinations.join(" · ")}</p><h1>{departure.tour.name}</h1><p>{departure.startsOn} → {departure.endsOn}</p></div></header><section className="section"><div className="page-container departure-detail"><div><div className="departure-facts"><Card><CardContent><CalendarDays /><span>Departure dates</span><strong>{departure.startsOn}<br />{departure.endsOn}</strong></CardContent></Card><Card><CardContent><UsersRound /><span>Availability</span><strong>{departure.availability.remaining} of {departure.availability.capacity} places</strong><Progress value={departure.availability.percent} /></CardContent></Card><Card><CardContent><Clock3 /><span>Book by</span><strong>{departure.bookingDeadline}</strong></CardContent></Card></div><section className="detail-section"><p className="section-eyebrow">YOUR JOURNEY AT A GLANCE</p><h2>Itinerary preview</h2><Accordion defaultValue={["day-1"]} multiple>{departure.itineraryPreview.map((item) => <AccordionItem key={item.day} value={`day-${item.day}`}><AccordionTrigger><span className="itinerary-day">Day {String(item.day).padStart(2, "0")}</span>{item.title}</AccordionTrigger><AccordionContent>A locally hosted day with a balanced mix of signature sights and unhurried moments.</AccordionContent></AccordionItem>)}</Accordion></section><section className="detail-section"><h2>Key inclusions</h2><div className="highlight-grid">{departure.inclusions.map((item) => <span key={item}><Check />{item}</span>)}</div></section></div><aside className="booking-card booking-card--departure"><Badge variant={departure.availability.label === "SOLD_OUT" ? "destructive" : "secondary"}>{departure.availability.label.replace("_", " ")}</Badge><p>{t("tour.fromPerPerson")}</p><strong>{formatCurrencyMinor(departure.price.amountMinor, departure.price.currency, intlLocale(locale))}</strong><ul><li><CalendarDays />{departure.startsOn} → {departure.endsOn}</li><li><UsersRound />{departure.availability.remaining} places left</li><li><ShieldCheck />Authoritative inventory checked at checkout</li></ul><Button size="lg" disabled={departure.availability.remaining === 0} render={<Link href={`/checkout/${departure.id}`} />}>{t("tour.bookNow")}</Button><Button variant="outline" render={<Link href={`/tours/${departure.tour.slug}`} />}>{t("tour.viewDetails")}</Button></aside></div></section></main>;
 }

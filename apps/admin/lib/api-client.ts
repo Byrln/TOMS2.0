@@ -14,6 +14,11 @@ function getSupabaseClient() {
 }
 
 export async function adminApiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  if (process.env.NEXT_PUBLIC_TOMS_DEMO_MODE === "1") {
+    const headers = new Headers(init.headers);
+    headers.set("authorization", "Bearer toms-demo-access-token");
+    return fetch(`${apiUrl}${path}`, { ...init, headers });
+  }
   const { data, error } = await getSupabaseClient().auth.getSession();
   if (error || !data.session?.access_token) throw new Error("An authenticated staff session is required");
   const headers = new Headers(init.headers);

@@ -13,6 +13,7 @@ const envSchema = z.object({
   SUPABASE_JWT_ISSUER: z.string().url().optional(),
   SUPABASE_JWT_AUDIENCE: z.string().default("authenticated"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+  TOMS_DEMO_MODE: z.enum(["0", "1"]).default("0"),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;

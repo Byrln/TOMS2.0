@@ -1,98 +1,34 @@
-"use client";
-/* eslint-disable react/jsx-key -- cell elements are wrapped in keyed table cells at the render boundary */
-
-import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
-import { Search, SlidersHorizontal } from "lucide-react";
+import Link from "next/link";
+import { Ellipsis, Search, SlidersHorizontal } from "lucide-react";
 import { formatCurrencyMinor } from "@toms/config";
-import { StatusBadge } from "@toms/admin-ui";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Progress, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@toms/admin-ui";
 import { intlLocale, statusLabel } from "@toms/i18n";
-import { useLocale } from "@toms/i18n/react";
+import { getServerI18n } from "@/lib/i18n";
 
 type Row = Record<string, unknown>;
-
-function text(value: unknown) { return String(value ?? "—"); }
-function tone(value: unknown) {
-  const normalized = text(value).toUpperCase();
-  if (["CONFIRMED", "PUBLISHED", "SUCCEEDED", "PAID", "ACTIVE", "GUARANTEED", "READY", "MATCHED"].includes(normalized)) return "success" as const;
-  if (["PENDING", "DRAFT", "OPEN", "HELD", "UNPAID", "MISSING", "UNMATCHED"].includes(normalized)) return "warning" as const;
-  if (["FAILED", "CANCELLED", "EXPIRED", "VOID"].includes(normalized)) return "danger" as const;
+type Column = { key: string; label: string; cell: (row: Row) => React.ReactNode };
+const text = (value: unknown) => String(value ?? "—");
+const tone = (value: unknown) => {
+  const state = text(value).toUpperCase();
+  if (["CONFIRMED", "PUBLISHED", "SUCCEEDED", "PAID", "ACTIVE", "GUARANTEED", "READY", "MATCHED", "APPROVED"].includes(state)) return "success" as const;
+  if (["PENDING", "DRAFT", "OPEN", "HELD", "UNPAID", "MISSING", "UNMATCHED", "PARTIALLY_PAID", "REVIEW", "EXPIRING"].includes(state)) return "warning" as const;
+  if (["FAILED", "CANCELLED", "EXPIRED", "VOID", "OVERDUE"].includes(state)) return "danger" as const;
   return "neutral" as const;
+};
+
+async function WorkspaceTable({ rows, columns, query = "", total = rows.length }: { rows: Row[]; columns: Column[]; query?: string; total?: number }) {
+  const { t } = await getServerI18n();
+  return <section className="panel data-panel operational-table"><div className="table-toolbar"><form className="table-search" action=""><Search aria-hidden="true" /><Input name="q" defaultValue={query} placeholder={t("common.searchPlaceholder")} aria-label={t("admin.searchList")} /><Button type="submit" variant="secondary">{t("common.search")}</Button></form><div className="table-toolbar__meta"><SlidersHorizontal /> {t("table.total", { count: total })}</div></div><Table className="data-table"><TableHeader><TableRow>{columns.map((column) => <TableHead key={column.key}>{column.label}</TableHead>)}<TableHead className="align-right"><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader><TableBody>{rows.length === 0 ? <TableRow><TableCell colSpan={columns.length + 1} className="data-table__empty">{t("state.empty")}</TableCell></TableRow> : rows.map((row, index) => <TableRow key={text(row.id ?? index)}>{columns.map((column) => <TableCell key={column.key}>{column.cell(row)}</TableCell>)}<TableCell className="align-right"><DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Actions" />}><Ellipsis /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem>{t("common.details")}</DropdownMenuItem><DropdownMenuItem>{t("admin.export")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>)}</TableBody></Table><div className="table-pagination"><span>{Math.min(rows.length, total)} / {total}</span><Button variant="outline" size="sm" render={<Link href="?page=2" />}>Next</Button></div></section>;
 }
 
-function TableFrame({ rows, labels, cells }: { rows: Row[]; labels: string[]; cells(row: Row): ReactNode[] }) {
-  const { t } = useLocale();
-  const [query, setQuery] = useState("");
-  const deferred = useDeferredValue(query.trim().toLowerCase());
-  const filtered = useMemo(() => rows.filter((row) => Object.values(row).some((value) => text(value).toLowerCase().includes(deferred))), [deferred, rows]);
-  return <section className="panel data-panel">
-    <div className="table-toolbar"><label className="admin-search filter-input"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("common.searchPlaceholder")} aria-label={t("admin.searchList")} /></label><div className="table-toolbar__meta"><SlidersHorizontal size={14} /> {t("table.total", { count: filtered.length })}</div></div>
-    <div className="data-table-wrap"><table className="data-table"><thead><tr>{labels.map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>{filtered.length === 0 ? <tr><td colSpan={labels.length} className="data-table__empty">{t("state.empty")}</td></tr> : filtered.map((row, index) => <tr key={text(row.id ?? index)}>{cells(row).map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
-  </section>;
-}
-
-function Status({ value }: { value: unknown }) {
-  const { locale } = useLocale();
-  return <StatusBadge tone={tone(value)}>{statusLabel(locale, text(value))}</StatusBadge>;
-}
-
-function Money({ amount, currency }: { amount: unknown; currency: unknown }) {
-  const { locale } = useLocale();
-  return <strong>{formatCurrencyMinor(Number(amount ?? 0), text(currency ?? "MNT"), intlLocale(locale))}</strong>;
-}
-
-function DateValue({ value }: { value: unknown }) {
-  const { locale } = useLocale();
-  if (!value) return <>—</>;
-  const date = new Date(text(value));
-  return <>{Number.isNaN(date.valueOf()) ? text(value) : new Intl.DateTimeFormat(intlLocale(locale), { year: "numeric", month: "short", day: "2-digit" }).format(date)}</>;
-}
-
-export function ToursTable({ rows }: { rows: Row[] }) {
-  const { t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.tourName"), t("admin.duration"), t("admin.destinations"), t("admin.languages"), t("admin.status"), t("admin.createdAt")]} cells={(row) => [<strong>{text(row.name)}</strong>, `${text(row.durationDays)} ${t("admin.days")} / ${text(row.durationNights)} ${t("admin.nights")}`, Array.isArray(row.destinations) ? row.destinations.join(", ") : text(row.destinations), Array.isArray(row.languages) ? row.languages.join(", ").toUpperCase() : text(row.languages), <Status value={row.status} />, <DateValue value={row.createdAt} />]} />;
-}
-
-export function DeparturesTable({ rows }: { rows: Row[] }) {
-  const { locale, t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.code"), t("admin.tour"), t("admin.startDate"), t("admin.endDate"), t("admin.confirmedCapacity"), t("admin.tripStatus"), t("admin.status")]} cells={(row) => [<strong>{text(row.code)}</strong>, text((row.tourNameI18n as Record<string, unknown> | undefined)?.[locale] ?? row.tourName), <DateValue value={row.startsOn} />, <DateValue value={row.endsOn} />, `${text(row.confirmedCount)} / ${text(row.capacity)}`, <Status value={row.tripStatus} />, <Status value={row.status} />]} />;
-}
-
-export function BookingsTable({ rows }: { rows: Row[] }) {
-  const { t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.bookingNumber"), t("admin.email"), t("admin.partySize"), t("admin.status"), t("admin.paymentStatus"), t("admin.total"), t("admin.createdAt")]} cells={(row) => [<strong>{text(row.bookingNumber)}</strong>, text(row.organizerEmail), text(row.partySize), <Status value={row.status} />, <Status value={row.paymentStatus} />, <Money amount={row.totalMinor} currency={row.currency} />, <DateValue value={row.createdAt} />]} />;
-}
-
-export function TravelersTable({ rows }: { rows: Row[] }) {
-  const { t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.firstName"), t("admin.lastName"), t("admin.email"), t("admin.nationality"), t("admin.documentReadiness"), t("admin.visaStatus"), t("admin.createdAt")]} cells={(row) => [text(row.firstName), <strong>{text(row.lastName)}</strong>, text(row.email), text(row.nationality), <Status value={row.documentReadiness} />, <Status value={row.visaStatus} />, <DateValue value={row.createdAt} />]} />;
-}
-
-export function CustomersTable({ rows }: { rows: Row[] }) {
-  const { t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.name"), t("admin.email"), t("admin.organization"), t("admin.segment"), t("admin.source"), t("admin.createdAt")]} cells={(row) => [<strong>{[row.firstName, row.lastName].filter(Boolean).map(text).join(" ") || "—"}</strong>, text(row.email), text(row.organization), <Status value={row.segment} />, text(row.source), <DateValue value={row.createdAt} />]} />;
-}
-
-export function ConversationsTable({ rows }: { rows: Row[] }) {
-  const { t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.subject"), t("admin.channel"), t("admin.status"), t("admin.bookingNumber"), t("admin.updatedAt")]} cells={(row) => [<strong>{text(row.subject)}</strong>, text(row.channel), <Status value={row.status} />, text(row.bookingId), <DateValue value={row.updatedAt} />]} />;
-}
-
-export function PaymentsTable({ rows }: { rows: Row[] }) {
-  const { t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.provider"), t("admin.providerTransaction"), t("admin.status"), t("admin.total"), t("admin.reconciliation"), t("admin.createdAt")]} cells={(row) => [<strong>{text(row.provider)}</strong>, text(row.providerTransactionId), <Status value={row.status} />, <Money amount={row.amountMinor} currency={row.currency} />, <Status value={row.reconciliationStatus} />, <DateValue value={row.createdAt} />]} />;
-}
-
-export function InvoicesTable({ rows }: { rows: Row[] }) {
-  const { t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.invoiceNumber"), t("admin.status"), t("admin.total"), t("admin.paid"), t("admin.issuedAt"), t("admin.dueAt")]} cells={(row) => [<strong>{text(row.invoiceNumber)}</strong>, <Status value={row.status} />, <Money amount={row.totalMinor} currency={row.currency} />, <Money amount={row.paidMinor} currency={row.currency} />, <DateValue value={row.issuedAt} />, <DateValue value={row.dueAt} />]} />;
-}
-
-export function DocumentsTable({ rows }: { rows: Row[] }) {
-  const { t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.documentTitle"), t("admin.type"), t("admin.visibility"), t("admin.contentType"), t("admin.expiresAt"), t("admin.createdAt")]} cells={(row) => [<strong>{text(row.title)}</strong>, text(row.type), <Status value={row.visibility} />, text(row.contentType), <DateValue value={row.expiresAt} />, <DateValue value={row.createdAt} />]} />;
-}
-
-export function PromotionsTable({ rows }: { rows: Row[] }) {
-  const { t } = useLocale();
-  return <TableFrame rows={rows} labels={[t("admin.code"), t("admin.name"), t("admin.presentation"), t("admin.status"), t("admin.startDate"), t("admin.endDate"), t("admin.redemptionLimit")]} cells={(row) => [<strong>{text(row.code)}</strong>, text(row.name), text(row.presentation), <Status value={row.status} />, <DateValue value={row.startsAt} />, <DateValue value={row.endsAt} />, text(row.redemptionLimit)]} />;
-}
+export type TableProps = { rows: Row[]; query?: string; total?: number };
+export async function ToursTable(props: TableProps) { const { t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "name", label: t("admin.tourName"), cell: (row) => <div className="primary-cell"><strong>{text(row.name)}</strong><span>{text(row.slug)}</span></div> }, { key: "duration", label: t("admin.duration"), cell: (row) => `${text(row.durationDays)} ${t("admin.days")} / ${text(row.durationNights)} ${t("admin.nights")}` }, { key: "destination", label: t("admin.destinations"), cell: (row) => Array.isArray(row.destinations) ? row.destinations.join(", ") : text(row.destinations) }, { key: "next", label: t("admin.startDate"), cell: (row) => text(row.nextDeparture) }, { key: "price", label: t("checkout.unitPrice"), cell: (row) => <strong>{formatCurrencyMinor(Number(row.basePriceMinor ?? 0), text(row.currency ?? "MNT"), "mn-MN")}</strong> }, { key: "status", label: t("admin.status"), cell: (row) => <StatusBadge tone={tone(row.status)}>{text(row.status)}</StatusBadge> }]} />; }
+export async function DeparturesTable(props: TableProps) { const { locale, t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "code", label: t("admin.code"), cell: (row) => <div className="primary-cell"><strong>{text(row.code)}</strong><span>{text(row.tourName)}</span></div> }, { key: "dates", label: t("checkout.date"), cell: (row) => `${text(row.startsOn)} → ${text(row.endsOn)}` }, { key: "occupancy", label: t("admin.confirmedCapacity"), cell: (row) => <div className="progress-cell"><span>{text(row.confirmedCount)} / {text(row.capacity)}</span><Progress value={Number(row.confirmedCount ?? 0) / Math.max(1, Number(row.capacity ?? 1)) * 100} /></div> }, { key: "readiness", label: "Readiness", cell: (row) => `${text(row.readinessPercent)}%` }, { key: "risk", label: "Risk", cell: (row) => <StatusBadge tone={Number(row.riskCount ?? 0) > 3 ? "danger" : Number(row.riskCount ?? 0) > 0 ? "warning" : "success"}>{text(row.riskCount ?? 0)}</StatusBadge> }, { key: "status", label: t("admin.status"), cell: (row) => <StatusBadge tone={tone(row.status)}>{statusLabel(locale, text(row.status))}</StatusBadge> }]} />; }
+export async function BookingsTable(props: TableProps) { const { locale, t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "number", label: t("admin.bookingNumber"), cell: (row) => <div className="primary-cell"><strong>{text(row.bookingNumber)}</strong><span>{text(row.customerName)}</span></div> }, { key: "tour", label: t("admin.tour"), cell: (row) => <div className="primary-cell"><strong>{text(row.tourName)}</strong><span>{text(row.departureCode)}</span></div> }, { key: "party", label: t("admin.partySize"), cell: (row) => text(row.partySize) }, { key: "booking", label: t("admin.status"), cell: (row) => <StatusBadge tone={tone(row.status)}>{statusLabel(locale, text(row.status))}</StatusBadge> }, { key: "payment", label: t("admin.paymentStatus"), cell: (row) => <StatusBadge tone={tone(row.paymentStatus)}>{statusLabel(locale, text(row.paymentStatus))}</StatusBadge> }, { key: "total", label: t("admin.total"), cell: (row) => <strong>{formatCurrencyMinor(Number(row.totalMinor ?? 0), text(row.currency ?? "MNT"), intlLocale(locale))}</strong> }, { key: "source", label: "Source", cell: (row) => text(row.source) }]} />; }
+export async function TravelersTable(props: TableProps) { const { locale, t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "name", label: t("admin.name"), cell: (row) => <div className="primary-cell"><strong>{text(row.fullName ?? `${text(row.firstName)} ${text(row.lastName)}`)}</strong><span>{text(row.email)}</span></div> }, { key: "trip", label: t("admin.tour"), cell: (row) => <div className="primary-cell"><strong>{text(row.tourName)}</strong><span>{text(row.bookingNumber)}</span></div> }, { key: "nationality", label: t("admin.nationality"), cell: (row) => text(row.nationality) }, { key: "documents", label: t("admin.documentReadiness"), cell: (row) => <StatusBadge tone={tone(row.documentReadiness)}>{statusLabel(locale, text(row.documentReadiness))}</StatusBadge> }, { key: "visa", label: t("admin.visaStatus"), cell: (row) => <StatusBadge tone={tone(row.visaStatus)}>{statusLabel(locale, text(row.visaStatus))}</StatusBadge> }, { key: "dietary", label: "Dietary", cell: (row) => text(row.dietaryRequirements) }]} />; }
+export async function CustomersTable(props: TableProps) { const { locale, t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "name", label: t("admin.name"), cell: (row) => <div className="primary-cell"><strong>{text(row.fullName)}</strong><span>{text(row.email)}</span></div> }, { key: "segment", label: t("admin.segment"), cell: (row) => <StatusBadge tone="info">{text(row.segment)}</StatusBadge> }, { key: "bookings", label: t("nav.bookings"), cell: (row) => text(row.bookingCount) }, { key: "value", label: "Lifetime value", cell: (row) => <strong>{formatCurrencyMinor(Number(row.lifetimeValueMinor ?? 0), "MNT", intlLocale(locale))}</strong> }, { key: "trip", label: "Next trip", cell: (row) => text(row.nextTrip) }, { key: "source", label: t("admin.source"), cell: (row) => text(row.source) }]} />; }
+export async function ConversationsTable(props: TableProps) { const { t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "subject", label: t("admin.subject"), cell: (row) => <div className="primary-cell"><strong>{text(row.subject)}</strong><span>{text(row.preview)}</span></div> }, { key: "customer", label: t("nav.customers"), cell: (row) => text(row.customerName) }, { key: "booking", label: t("admin.bookingNumber"), cell: (row) => text(row.bookingNumber) }, { key: "channel", label: t("admin.channel"), cell: (row) => text(row.channel) }, { key: "unread", label: "Unread", cell: (row) => <StatusBadge tone={Number(row.unreadCount ?? 0) ? "warning" : "neutral"}>{text(row.unreadCount)}</StatusBadge> }, { key: "status", label: t("admin.status"), cell: (row) => <StatusBadge tone={tone(row.status)}>{text(row.status)}</StatusBadge> }]} />; }
+export async function PaymentsTable(props: TableProps) { const { locale, t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "transaction", label: t("admin.providerTransaction"), cell: (row) => <div className="primary-cell"><strong>{text(row.providerTransactionId)}</strong><span>{text(row.bookingNumber)}</span></div> }, { key: "customer", label: t("nav.customers"), cell: (row) => text(row.customerName) }, { key: "provider", label: t("admin.provider"), cell: (row) => text(row.provider) }, { key: "status", label: t("admin.status"), cell: (row) => <StatusBadge tone={tone(row.status)}>{statusLabel(locale, text(row.status))}</StatusBadge> }, { key: "amount", label: t("admin.total"), cell: (row) => <strong>{formatCurrencyMinor(Number(row.amountMinor ?? 0), text(row.currency ?? "MNT"), intlLocale(locale))}</strong> }, { key: "reconcile", label: t("admin.reconciliation"), cell: (row) => <StatusBadge tone={tone(row.reconciliationStatus)}>{text(row.reconciliationStatus)}</StatusBadge> }]} />; }
+export async function InvoicesTable(props: TableProps) { const { locale, t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "invoice", label: t("admin.invoiceNumber"), cell: (row) => <div className="primary-cell"><strong>{text(row.invoiceNumber)}</strong><span>{text(row.bookingNumber)}</span></div> }, { key: "customer", label: t("nav.customers"), cell: (row) => text(row.customerName) }, { key: "status", label: t("admin.status"), cell: (row) => <StatusBadge tone={tone(row.status)}>{text(row.status)}</StatusBadge> }, { key: "total", label: t("admin.total"), cell: (row) => formatCurrencyMinor(Number(row.totalMinor ?? 0), text(row.currency ?? "MNT"), intlLocale(locale)) }, { key: "paid", label: t("admin.paid"), cell: (row) => formatCurrencyMinor(Number(row.paidMinor ?? 0), text(row.currency ?? "MNT"), intlLocale(locale)) }, { key: "due", label: t("admin.dueAt"), cell: (row) => text(row.dueAt) }]} />; }
+export async function DocumentsTable(props: TableProps) { const { t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "document", label: t("admin.documentTitle"), cell: (row) => <div className="primary-cell"><strong>{text(row.title)}</strong><span>{text(row.travelerName)}</span></div> }, { key: "booking", label: t("admin.bookingNumber"), cell: (row) => text(row.bookingNumber) }, { key: "departure", label: t("nav.departures"), cell: (row) => text(row.departureCode) }, { key: "type", label: t("admin.type"), cell: (row) => text(row.type) }, { key: "status", label: t("admin.status"), cell: (row) => <StatusBadge tone={tone(row.status)}>{text(row.status)}</StatusBadge> }, { key: "expires", label: t("admin.expiresAt"), cell: (row) => text(row.expiresAt) }]} />; }
+export async function PromotionsTable(props: TableProps) { const { t } = await getServerI18n(); return <WorkspaceTable {...props} columns={[{ key: "code", label: t("admin.code"), cell: (row) => <strong>{text(row.code)}</strong> }, { key: "name", label: t("admin.name"), cell: (row) => <div className="primary-cell"><strong>{text(row.name)}</strong><span>{text(row.description)}</span></div> }, { key: "benefit", label: "Benefit", cell: (row) => text(row.benefit) }, { key: "status", label: t("admin.status"), cell: (row) => <StatusBadge tone={tone(row.status)}>{text(row.status)}</StatusBadge> }, { key: "period", label: t("checkout.date"), cell: (row) => `${text(row.startsAt)} → ${text(row.endsAt)}` }, { key: "redemptions", label: "Redemptions", cell: (row) => `${text(row.redemptions)} / ${text(row.redemptionLimit)}` }]} />; }

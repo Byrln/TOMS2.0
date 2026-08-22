@@ -1,16 +1,13 @@
-"use client";
+import { Filter, Search } from "lucide-react";
+import type { StorefrontToursResponse } from "@toms/contracts";
+import { Button, Checkbox, Field, FieldLabel, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, TourCard } from "@toms/storefront-ui";
+import { getServerI18n } from "@/lib/i18n";
 
-import { useDeferredValue, useMemo, useState } from "react";
-import { Search } from "lucide-react";
-import { TourCard } from "@toms/storefront-ui";
-import type { Tour } from "@/lib/api";
-import { useLocale } from "@toms/i18n/react";
+function Filters({ data, query }: { data: StorefrontToursResponse; query: string }) {
+  return <form className="tour-filters" action="/tours"><Field><FieldLabel htmlFor="tour-search">Search journeys</FieldLabel><div className="filter-input"><Search /><Input id="tour-search" name="q" defaultValue={query} placeholder="Altai, Seoul, culture…" /></div></Field><fieldset><legend>Destination</legend>{data.facets.destinations.slice(0, 8).map((item) => <Field orientation="horizontal" key={item.value}><Checkbox id={`destination-${item.value}`} name="destination" value={item.value} /><FieldLabel htmlFor={`destination-${item.value}`}><span>{item.label}</span><small>{item.count}</small></FieldLabel></Field>)}</fieldset><fieldset><legend>Journey type</legend>{data.facets.categories.filter((item) => item.count > 0).map((item) => <Field orientation="horizontal" key={item.value}><Checkbox id={`category-${item.value}`} name="category" value={item.value} /><FieldLabel htmlFor={`category-${item.value}`}><span>{item.label}</span><small>{item.count}</small></FieldLabel></Field>)}</fieldset><Button type="submit">Apply filters</Button></form>;
+}
 
-export function TourExplorer({ tours }: { tours: Tour[] }) {
-  const { t } = useLocale();
-  const [query, setQuery] = useState("");
-  const deferred = useDeferredValue(query.toLowerCase());
-  const filtered = useMemo(() => tours.filter((tour) => [tour.name, tour.summary, ...tour.destinations].join(" ").toLowerCase().includes(deferred)), [deferred, tours]);
-  const categories = [t("public.cultural"), t("public.adventure"), t("public.nature"), t("public.family"), t("public.luxury")];
-  return <><div className="filter-bar"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("public.where")} aria-label={t("public.searchTours")} /><span>{t("public.tourCount", { count: filtered.length })}</span></div><div className="tour-list-layout"><aside className="filter-rail"><h3>{t("public.tripType")}</h3>{categories.map((label) => <label key={label}><input type="checkbox" /> {label}</label>)}</aside><section className="tour-list-grid">{filtered.map((tour) => <TourCard key={tour.id} tour={{ slug:tour.slug,name:tour.name,summary:tour.summary,heroImageUrl:tour.heroImageUrl,durationDays:tour.durationDays,priceMinor:tour.basePriceMinor,currency:tour.currency }} />)}</section></div></>;
+export async function TourExplorer({ data, query = "" }: { data: StorefrontToursResponse; query?: string }) {
+  const { t } = await getServerI18n();
+  return <div className="tour-list-layout"><aside className="filter-rail"><Filters data={data} query={query} /></aside><section className="tour-results"><div className="results-toolbar"><span>{t("public.tourCount", { count: data.page.total })}</span><Sheet><SheetTrigger render={<Button className="mobile-filter" variant="outline" />}><Filter />Filters</SheetTrigger><SheetContent side="left"><SheetHeader><SheetTitle>Find your journey</SheetTitle><SheetDescription>Filter by destination and style.</SheetDescription></SheetHeader><Filters data={data} query={query} /></SheetContent></Sheet><Select defaultValue="featured"><SelectTrigger aria-label="Sort tours"><SelectValue /></SelectTrigger><SelectContent>{data.sortOptions.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>{data.items.length === 0 ? <div className="empty-results"><Search /><h2>No journeys found</h2><p>Try a broader destination or remove a filter.</p></div> : <div className="tour-list-grid">{data.items.map((tour) => <TourCard key={tour.id} tour={{ slug: tour.slug, name: tour.name, summary: tour.summary, heroImageUrl: tour.heroImage.url, durationDays: tour.durationDays, priceMinor: tour.priceFrom.amountMinor, currency: tour.priceFrom.currency, destination: tour.destinations.join(" · "), nextAvailableOn: tour.nextAvailableOn, availabilityLabel: tour.availabilityLabel, promotionLabel: tour.promotion?.label ?? null }} />)}</div>}<div className="catalog-pagination"><Button variant="outline" disabled={data.page.page <= 1}>Previous</Button><span>Page {data.page.page} of {Math.max(1, data.page.pageCount)}</span><Button variant="outline" disabled={data.page.page >= data.page.pageCount}>Next</Button></div></section></div>;
 }

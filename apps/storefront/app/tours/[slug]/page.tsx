@@ -2,173 +2,33 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check, Clock3, MapPin, ShieldCheck } from "lucide-react";
+import { CalendarDays, Check, Clock3, MapPin, ShieldCheck, UsersRound, X } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Badge, Button, Card, CardContent, Progress, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@toms/storefront-ui";
 import { formatCurrencyMinor } from "@toms/config";
+import { intlLocale } from "@toms/i18n";
 import { getTour } from "@/lib/api";
 import { getServerI18n } from "@/lib/i18n";
-import { intlLocale } from "@toms/i18n";
 
 export const dynamic = "force-dynamic";
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}): Promise<Metadata> {
-  const { slug } = await params;
-  try {
-    const tour = await getTour(slug);
-    return {
-      title: tour.name,
-      description: tour.summary,
-      alternates: { canonical: `/tours/${tour.slug}` },
-      openGraph: { images: [tour.heroImageUrl] },
-    };
-  } catch {
-    const { t } = await getServerI18n();
-    return { title: t("tours.tour") };
-  }
-}
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> { const { slug } = await params; try { const tour = await getTour(slug); return { title: tour.hero.title, description: tour.hero.summary, alternates: { canonical: `/tours/${tour.slug}` }, openGraph: { images: [tour.hero.image.url] } }; } catch { return { title: "Journey" }; } }
 
-export default async function TourDetail({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
-  const { locale, t } = await getServerI18n();
-  const currencyLocale = intlLocale(locale);
-  let tour;
-  try {
-    tour = await getTour(slug);
-  } catch {
-    notFound();
-  }
-  const first = tour.departures[0];
-  return (
-    <main>
-      <section className="detail-hero">
-        <Image
-          src={tour.heroImageUrl}
-          alt={tour.name}
-          fill
-          loading="eager"
-          fetchPriority="high"
-          sizes="100vw"
-        />
-        <div className="detail-hero__content">
-          <span>{tour.destinations.join(" · ")}</span>
-          <h1>{tour.name}</h1>
-          <p>{tour.summary}</p>
-        </div>
-      </section>
-      <div className="page-container detail-layout">
-        <div className="detail-content">
-          <section className="detail-section">
-            <h2>{t("tour.about")}</h2>
-            <p>{tour.description}</p>
-            <ul>
-              {tour.highlights.map((item: string) => (
-                <li key={item}>
-                  <Check size={14} /> {item}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section className="detail-section">
-            <h2>{t("tours.itinerary")}</h2>
-            {Array.from({ length: tour.durationDays }, (_, index) => (
-              <div className="trip-event" key={index}>
-                <time>{t("tour.day", { count: index + 1 })}</time>
-                <h3>
-                  {index === 0
-                    ? t("tour.meetAndStart")
-                    : index === tour.durationDays - 1
-                      ? t("tour.returnDay")
-                      : t("tour.exploreDestination", { destination: tour.destinations[index % tour.destinations.length] ?? "Destination" })}
-                </h3>
-                <p>
-                  <MapPin size={12} /> {t("tour.guidedProgram")}
-                </p>
-              </div>
-            ))}
-          </section>
-          <section className="detail-section">
-            <h2>{t("tour.included")}</h2>
-            <ul>
-              {tour.inclusions.map((item: string) => (
-                <li key={item}>
-                  <Check size={14} /> {item}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section className="detail-section" id="departures">
-            <h2>{t("tour.departuresAndPrices")}</h2>
-            {tour.departures.length === 0 ? (
-              <p>{t("tour.noDepartures")}</p>
-            ) : (
-              tour.departures.map((departure) => (
-                <div className="departure-card" key={departure.id}>
-                  <strong>
-                    {departure.startsOn} → {departure.endsOn}
-                  </strong>
-                  <span>
-                    {t("tour.booked", { confirmed: departure.confirmedCount, capacity: departure.capacity })}
-                    ·{" "}
-                    {formatCurrencyMinor(
-                      departure.priceMinor,
-                      departure.currency,
-                      currencyLocale,
-                    )}
-                  </span>
-                  <Link href={`/checkout/${departure.id}`}>{t("tour.select")}</Link>
-                </div>
-              ))
-            )}
-          </section>
-        </div>
-        <aside className="booking-card">
-          <p>{t("tour.fromPerPerson")}</p>
-          <strong>
-            {formatCurrencyMinor(
-              first?.priceMinor ?? tour.basePriceMinor,
-              tour.currency,
-              currencyLocale,
-            )}
-          </strong>
-          <ul>
-            <li>
-              <Clock3 size={13} /> {t("common.days", { count: tour.durationDays })} /{" "}
-              {t("common.nights", { count: tour.durationNights })}
-            </li>
-            <li>
-              <ShieldCheck size={13} /> {t("tour.securePayment")}
-            </li>
-            <li>
-              <MapPin size={13} /> {tour.destinations.join(", ")}
-            </li>
-          </ul>
-          <Link
-            className="primary-link"
-            href={first ? `/checkout/${first.id}` : "#departures"}
-          >
-            {t("tour.chooseDate")}
-          </Link>
-        </aside>
-      </div>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "TouristTrip",
-            name: tour.name,
-            description: tour.summary,
-            image: tour.heroImageUrl,
-            itinerary: tour.destinations,
-          }),
-        }}
-      />
-    </main>
-  );
+export default async function TourDetail({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params; const { locale, t } = await getServerI18n(); const currencyLocale = intlLocale(locale);
+  let tour; try { tour = await getTour(slug); } catch { notFound(); }
+  const first = tour.departures.find((item) => item.availability.remaining > 0) ?? tour.departures[0];
+  return <main>
+    <section className="detail-hero"><Image src={tour.hero.image.url} alt={tour.hero.image.alt} fill loading="eager" fetchPriority="high" sizes="100vw" /><div className="detail-hero__veil" /><div className="detail-hero__content"><p>{tour.hero.eyebrow}</p><h1>{tour.hero.title}</h1><span>{tour.hero.summary}</span></div></section>
+    <section className="tour-facts"><div><Clock3 /><span>{t("common.days", { count: tour.facts.durationDays })}<small>{t("common.nights", { count: tour.facts.durationNights })}</small></span></div><div><MapPin /><span>{tour.facts.destinations.join(" · ")}<small>{tour.facts.difficulty}</small></span></div><div><UsersRound /><span>{tour.facts.groupSize.min}–{tour.facts.groupSize.max} travelers<small>Small by design</small></span></div><div><ShieldCheck /><span>Locally hosted<small>24/7 journey support</small></span></div></section>
+    <div className="page-container detail-layout"><div className="detail-content">
+      <section className="detail-section story-intro"><p className="section-eyebrow">THE JOURNEY</p><h2>{t("tour.about")}</h2><p className="detail-lede">{tour.hero.summary}</p><div className="highlight-grid">{tour.highlights.map((item) => <span key={item}><Check />{item}</span>)}</div></section>
+      {tour.story.map((block, index) => <section className="detail-section story-block" key={`${block.title}-${index}`}><div><p className="section-eyebrow">INSIDE THE EXPERIENCE</p><h2>{block.title}</h2><p>{block.body}</p></div>{block.image ? <div className="story-block__image"><Image src={block.image.url} alt={block.image.alt} fill sizes="(max-width: 768px) 90vw, 45vw" /></div> : null}</section>)}
+      <section className="detail-section"><p className="section-eyebrow">DAY BY DAY</p><h2>{t("tours.itinerary")}</h2><Accordion defaultValue={["day-1"]} multiple>{tour.itinerary.map((day) => <AccordionItem key={day.day} value={`day-${day.day}`}><AccordionTrigger><span className="itinerary-day">Day {String(day.day).padStart(2, "0")}</span>{day.title}</AccordionTrigger><AccordionContent><p>{day.description}</p></AccordionContent></AccordionItem>)}</Accordion></section>
+      <section className="detail-section"><p className="section-eyebrow">A SENSE OF PLACE</p><h2>Journey gallery</h2><div className="tour-gallery">{tour.gallery.map((image, index) => <div className={index === 0 ? "tour-gallery__feature" : ""} key={`${image.url}-${index}`}><Image src={image.url} alt={image.alt} fill sizes="(max-width: 768px) 90vw, 40vw" /></div>)}</div></section>
+      <section className="detail-section included-grid"><div><h2>{t("tour.included")}</h2>{tour.included.map((item) => <p key={item}><Check />{item}</p>)}</div><div><h2>Not included</h2>{tour.excluded.map((item) => <p key={item}><X />{item}</p>)}</div></section>
+      <section className="detail-section" id="departures"><p className="section-eyebrow">CHOOSE YOUR DATE</p><h2>{t("tour.departuresAndPrices")}</h2><Card><CardContent><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Availability</TableHead><TableHead>Price</TableHead><TableHead><span className="sr-only">Select</span></TableHead></TableRow></TableHeader><TableBody>{tour.departures.map((departure) => <TableRow key={departure.id}><TableCell><strong>{departure.startsOn}</strong><br /><small>to {departure.endsOn}</small></TableCell><TableCell><Badge variant={departure.availability.label === "SOLD_OUT" ? "destructive" : "secondary"}>{departure.availability.remaining} places</Badge><Progress value={departure.availability.percent} /></TableCell><TableCell><strong>{formatCurrencyMinor(departure.price.amountMinor, departure.price.currency, currencyLocale)}</strong><br /><small>per traveler</small></TableCell><TableCell><Button disabled={departure.availability.remaining === 0} render={<Link href={`/departures/${departure.id}`} />}>{t("tour.select")}</Button></TableCell></TableRow>)}</TableBody></Table></CardContent></Card></section>
+      <section className="detail-section"><h2>Frequently asked questions</h2><Accordion>{tour.faq.map((item, index) => <AccordionItem key={item.question} value={`faq-${index}`}><AccordionTrigger>{item.question}</AccordionTrigger><AccordionContent>{item.answer}</AccordionContent></AccordionItem>)}</Accordion></section>
+    </div><aside className="booking-card"><p>{t("tour.fromPerPerson")}</p><strong>{formatCurrencyMinor(tour.priceFrom.amountMinor, tour.priceFrom.currency, currencyLocale)}</strong><ul><li><CalendarDays />{first ? `${first.startsOn} → ${first.endsOn}` : "Dates on request"}</li><li><UsersRound />{first ? `${first.availability.remaining} places remain` : "Private departure"}</li><li><ShieldCheck />{t("tour.securePayment")}</li></ul><Button size="lg" render={<Link href={first ? `/checkout/${first.id}` : "#departures"} />}>{t("tour.chooseDate")}</Button><small>No booking fee · 15-minute inventory hold</small></aside></div>
+    <div className="mobile-booking-bar"><span>From <strong>{formatCurrencyMinor(tour.priceFrom.amountMinor, tour.priceFrom.currency, currencyLocale)}</strong></span><Button render={<Link href={first ? `/checkout/${first.id}` : "#departures"} />}>Choose date</Button></div>
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "TouristTrip", name: tour.hero.title, description: tour.hero.summary, image: tour.hero.image.url, itinerary: tour.facts.destinations }) }} />
+  </main>;
 }
