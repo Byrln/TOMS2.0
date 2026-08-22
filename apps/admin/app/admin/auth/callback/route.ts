@@ -11,5 +11,5 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) return NextResponse.redirect(new URL(next, url.origin));
   }
-  return NextResponse.redirect(new URL("/admin/login?error=Сэргээх+холбоос+хүчингүй+эсвэл+хугацаа+дууссан.", url.origin));
+  return NextResponse.redirect(new URL("/admin/login?error=invalid_link", url.origin));
 }

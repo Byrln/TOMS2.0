@@ -1,3 +1,3 @@
 import Link from "next/link";
-export default function NotFound() { return <main className="error-state"><h1>Хуудас олдсонгүй</h1><p>Энэ TOMS модуль байхгүй эсвэл танд харах эрх алга.</p><Link className="button button--primary" href="/">Хяналтын самбар</Link></main>; }
-
+import { getServerI18n } from "@/lib/i18n";
+export default async function NotFound() { const { t } = await getServerI18n(); return <main className="error-state"><h1>{t("state.notFoundTitle")}</h1><p>{t("state.adminNotFoundDescription")}</p><Link className="button button--primary" href="/">{t("nav.dashboard")}</Link></main>; }

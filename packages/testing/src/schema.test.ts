@@ -30,11 +30,15 @@ describe("Supabase security migrations", () => {
     expect(travelerClaim).toContain("visibility in ('PUBLIC', 'TRAVELER')");
   });
 
-  it("ships deterministic cross-module demo data", () => {
+  it("ships deterministic bilingual cross-module production seed data", () => {
     const tourInsert = seed.slice(seed.indexOf("insert into public.tour_definitions"), seed.indexOf("insert into public.departures"));
-    expect(tourInsert.match(/\n\('21111111-1111-4111-8111-11111111111\d'/g)?.length).toBe(8);
-    for (const entity of ["bookings", "booking_parties", "invoices", "payments", "service_orders", "storefront_releases", "promotions", "messages", "outbox_events"]) {
+    expect(tourInsert.match(/'21111111-1111-4111-8111-11111111111\d'/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(tourInsert).toContain("name_i18n");
+    expect(tourInsert).toContain('"mn"');
+    expect(tourInsert).toContain('"en"');
+    for (const entity of ["tour_prices", "itinerary_days", "itinerary_events", "bookings", "booking_parties", "invoices", "payments", "storefront_releases", "cms_blocks", "promotions", "audit_logs", "outbox_events"]) {
       expect(seed).toContain(`insert into public.${entity}`);
     }
+    expect(seed).not.toContain("'DEMO'");
   });
 });

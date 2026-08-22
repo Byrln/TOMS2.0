@@ -1,16 +1,25 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { StorefrontFooter, StorefrontHeader } from "@toms/storefront-ui";
+import { localeCookieName, normalizeLocale } from "@toms/i18n";
+import { LocaleProvider } from "@toms/i18n/react";
+import { getServerI18n } from "@/lib/i18n";
 import { Providers } from "./providers";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "http://localhost:3001"),
-  title: { default: "Munkh Discovery — TOMS", template: "%s | Munkh Discovery" },
-  description: "Монгол болон дэлхийн шилдэг олон өдрийн аяллууд.",
-  openGraph: { title: "Munkh Discovery", description: "Дэлхийг өөрийнхөөрөө мэдэр.", type: "website", locale: "mn_MN" },
-  twitter: { card: "summary_large_image" }
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { locale, t } = await getServerI18n();
+  return {
+    metadataBase: new URL(process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "http://localhost:3001"),
+    title: { default: "Munkh Discovery — TOMS", template: "%s | Munkh Discovery" },
+    description: t("public.heroDescription"),
+    openGraph: { title: "Munkh Discovery", description: t("public.heroTitle"), type: "website", locale: locale === "en" ? "en_US" : "mn_MN" },
+    twitter: { card: "summary_large_image" },
+  };
+}
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="mn" data-scroll-behavior="smooth"><body><Providers><StorefrontHeader />{children}<StorefrontFooter /></Providers></body></html>;
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const cookieStore = await cookies();
+  const locale = normalizeLocale(cookieStore.get(localeCookieName)?.value);
+  return <html lang={locale} data-scroll-behavior="smooth"><body suppressHydrationWarning><LocaleProvider initialLocale={locale}><Providers><StorefrontHeader />{children}<StorefrontFooter /></Providers></LocaleProvider></body></html>;
 }

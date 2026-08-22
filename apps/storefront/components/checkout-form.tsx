@@ -6,6 +6,8 @@ import { useMutation } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
 import { ShieldCheck } from "lucide-react";
 import { formatCurrencyMinor } from "@toms/config";
+import { intlLocale } from "@toms/i18n";
+import { useLocale } from "@toms/i18n/react";
 import type { Departure, Tour } from "@/lib/api";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -18,25 +20,24 @@ type FormValue = {
   termsAccepted: boolean;
 };
 
-async function checkout(input: { values: FormValue; departure: Departure }) {
+async function checkout(input: { values: FormValue; departure: Departure; locale: "mn" | "en" }) {
+  const storefrontHost = window.location.hostname;
+  const holdKey = `hold-${crypto.randomUUID()}`;
   const holdResponse = await fetch(`${apiUrl}/api/v1/booking-holds`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "idempotency-key": holdKey, "x-toms-storefront-host": storefrontHost, "x-toms-locale": input.locale },
     body: JSON.stringify({
       departureId: input.departure.id,
       partySize: 2,
-      idempotencyKey: `hold-${crypto.randomUUID()}`,
     }),
   });
   if (!holdResponse.ok)
-    throw new Error(
-      ((await holdResponse.json()) as { error?: { message?: string } }).error
-        ?.message ?? "Availability hold failed",
-    );
+    throw new Error("HOLD_FAILED");
   const hold = (await holdResponse.json()) as { id: string };
+  const checkoutKey = `checkout-${crypto.randomUUID()}`;
   const checkoutResponse = await fetch(`${apiUrl}/api/v1/checkout/sessions`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "idempotency-key": checkoutKey, "x-toms-storefront-host": storefrontHost, "x-toms-locale": input.locale },
     body: JSON.stringify({
       holdId: hold.id,
       payer: { fullName: input.values.fullName, email: input.values.email },
@@ -50,16 +51,11 @@ async function checkout(input: { values: FormValue; departure: Departure }) {
           nationality: input.values.nationality,
         },
       ],
-      paymentMethod: "DEMO",
-      termsAccepted: true,
-      idempotencyKey: `checkout-${crypto.randomUUID()}`,
+      termsAccepted: input.values.termsAccepted,
     }),
   });
   if (!checkoutResponse.ok)
-    throw new Error(
-      ((await checkoutResponse.json()) as { error?: { message?: string } })
-        .error?.message ?? "Checkout failed",
-    );
+    throw new Error("CHECKOUT_FAILED");
   return checkoutResponse.json() as Promise<{
     id: string;
     organizerEmail: string;
@@ -74,23 +70,23 @@ export function CheckoutForm({
   departure: Departure;
 }) {
   const router = useRouter();
+  const { locale, t } = useLocale();
+  const currencyLocale = intlLocale(locale);
+  const regions = new Intl.DisplayNames([currencyLocale], { type: "region" });
   const mutation = useMutation({
     mutationFn: checkout,
-    onSuccess: (booking) =>
-      router.push(
-        `/booking/confirmation/${booking.id}?email=${encodeURIComponent(booking.organizerEmail)}`,
-      ),
+    onSuccess: (booking) => router.push(`/login?email=${encodeURIComponent(booking.organizerEmail)}&booking=${booking.id}`),
   });
   const form = useForm({
     defaultValues: {
-      fullName: "Bat-Orgil Munkhbat",
-      email: "bat@example.com",
-      companionName: "Enkhjin Munkhbat",
+      fullName: "",
+      email: "",
+      companionName: "",
       nationality: "MN",
       termsAccepted: false,
     } as FormValue,
     onSubmit: async ({ value }) => {
-      await mutation.mutateAsync({ values: value, departure });
+      await mutation.mutateAsync({ values: value, departure, locale });
     },
   });
   const total = departure.priceMinor * 2;
@@ -104,22 +100,19 @@ export function CheckoutForm({
           void form.handleSubmit();
         }}
       >
-        <h1>Захиалгаа баталгаажуулах</h1>
-        <p>
-          Төлөгч болон аялагч тусдаа байх боломжтой. Энэхүү demo урсгал картын
-          мэдээлэл хадгалахгүй.
-        </p>
+        <h1>{t("checkout.reviewTitle")}</h1>
+        <p>{t("checkout.reviewDescription")}</p>
         <div className="form-grid">
           <form.Field
             name="fullName"
             validators={{
               onChange: ({ value }) =>
-                value.trim().length < 2 ? "Бүтэн нэр оруулна уу" : undefined,
+                value.trim().length < 2 ? t("checkout.fullNameValidation") : undefined,
             }}
           >
             {(field) => (
               <label className="field">
-                <span>Төлөгчийн нэр</span>
+                <span>{t("checkout.payerName")}</span>
                 <input
                   value={field.state.value}
                   onBlur={field.handleBlur}
@@ -135,12 +128,12 @@ export function CheckoutForm({
             name="email"
             validators={{
               onChange: ({ value }) =>
-                /\S+@\S+\.\S+/.test(value) ? undefined : "Имэйл буруу байна",
+                /\S+@\S+\.\S+/.test(value) ? undefined : t("validation.email"),
             }}
           >
             {(field) => (
               <label className="field">
-                <span>Имэйл</span>
+                <span>{t("auth.email")}</span>
                 <input
                   type="email"
                   value={field.state.value}
@@ -157,12 +150,12 @@ export function CheckoutForm({
             name="companionName"
             validators={{
               onChange: ({ value }) =>
-                value.trim().length < 2 ? "Хоёр дахь аялагчийн нэр" : undefined,
+                value.trim().length < 2 ? t("checkout.secondTravelerValidation") : undefined,
             }}
           >
             {(field) => (
               <label className="field">
-                <span>2-р аялагч</span>
+                <span>{t("checkout.secondTraveler")}</span>
                 <input
                   value={field.state.value}
                   onBlur={field.handleBlur}
@@ -177,14 +170,14 @@ export function CheckoutForm({
           <form.Field name="nationality">
             {(field) => (
               <label className="field">
-                <span>Иргэншил</span>
+                <span>{t("checkout.nationality")}</span>
                 <select
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
                 >
-                  <option value="MN">Монгол</option>
-                  <option value="US">United States</option>
-                  <option value="KR">Korea</option>
+                  <option value="MN">{regions.of("MN")}</option>
+                  <option value="US">{regions.of("US")}</option>
+                  <option value="KR">{regions.of("KR")}</option>
                 </select>
               </label>
             )}
@@ -194,7 +187,7 @@ export function CheckoutForm({
           name="termsAccepted"
           validators={{
             onChange: ({ value }) =>
-              value ? undefined : "Нөхцөлийг зөвшөөрнө үү",
+              value ? undefined : t("checkout.acceptTermsValidation"),
           }}
         >
           {(field) => (
@@ -204,16 +197,13 @@ export function CheckoutForm({
                 checked={field.state.value}
                 onChange={(event) => field.handleChange(event.target.checked)}
               />
-              <span>
-                Захиалгын нөхцөл, цуцлалтын бодлого, хувийн мэдээллийн журмыг
-                зөвшөөрч байна.
-              </span>
+              <span>{t("checkout.termsLong")}</span>
             </label>
           )}
         </form.Field>
         {mutation.error ? (
           <div className="checkout-error" role="alert">
-            {mutation.error.message}
+            {mutation.error.message === "HOLD_FAILED" ? t("checkout.holdFailed") : t("checkout.checkoutFailed")}
           </div>
         ) : null}
         <form.Subscribe
@@ -226,14 +216,13 @@ export function CheckoutForm({
               disabled={!canSubmit || isSubmitting || mutation.isPending}
             >
               {isSubmitting || mutation.isPending
-                ? "Баталгаажуулж байна..."
-                : `${formatCurrencyMinor(total, departure.currency)} төлөх`}
+                ? t("checkout.processing")
+                : t("checkout.reserveAmount", { amount: formatCurrencyMinor(total, departure.currency, currencyLocale) })}
             </button>
           )}
         </form.Subscribe>
         <small>
-          <ShieldCheck size={13} /> Inventory 15 минут atomically hold хийгдэж,
-          demo payment амжилттай баталгаажна.
+          <ShieldCheck size={13} /> {t("checkout.inventoryNotice")}
         </small>
       </form>
       <aside className="checkout-summary">
@@ -248,24 +237,24 @@ export function CheckoutForm({
         <div className="checkout-summary__body">
           <h2>{tour.name}</h2>
           <div className="summary-row">
-            <span>Огноо</span>
+            <span>{t("checkout.date")}</span>
             <strong>
               {departure.startsOn} → {departure.endsOn}
             </strong>
           </div>
           <div className="summary-row">
-            <span>Аялагч</span>
+            <span>{t("checkout.traveler")}</span>
             <strong>2</strong>
           </div>
           <div className="summary-row">
-            <span>Нэг хүний үнэ</span>
+            <span>{t("checkout.unitPrice")}</span>
             <strong>
-              {formatCurrencyMinor(departure.priceMinor, departure.currency)}
+              {formatCurrencyMinor(departure.priceMinor, departure.currency, currencyLocale)}
             </strong>
           </div>
           <div className="summary-row total">
-            <span>Нийт</span>
-            <strong>{formatCurrencyMinor(total, departure.currency)}</strong>
+            <span>{t("checkout.total")}</span>
+            <strong>{formatCurrencyMinor(total, departure.currency, currencyLocale)}</strong>
           </div>
         </div>
       </aside>

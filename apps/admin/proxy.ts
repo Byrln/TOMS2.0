@@ -7,7 +7,16 @@ const publicPaths = ["/admin/login", "/admin/forgot-password", "/admin/reset-pas
 export default async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) return NextResponse.next({ request });
+  const isPublic = publicPaths.some((path) => request.nextUrl.pathname.startsWith(path));
+  if (!url || !key) {
+    if (isPublic) return NextResponse.next({ request });
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/admin/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("error", "configuration");
+    loginUrl.searchParams.set("next", request.nextUrl.pathname);
+    return NextResponse.redirect(loginUrl);
+  }
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(url, key, {
@@ -32,7 +41,6 @@ export default async function proxy(request: NextRequest) {
     authenticatedStaff = false;
   }
 
-  const isPublic = publicPaths.some((path) => request.nextUrl.pathname.startsWith(path));
   if (!authenticatedStaff && !isPublic) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/admin/login";

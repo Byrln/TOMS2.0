@@ -4,7 +4,7 @@ TOMS is a multi-tenant Travel Operations OS with two deliberately separate user 
 
 ```mermaid
 flowchart LR
-  A[Admin Next.js] --> API[Hono API]
+  A[Admin Next.js] --> API[Elysia API]
   S[Storefront Next.js] --> API
   P[Traveler Portal] --> API
   API --> D[(Supabase PostgreSQL)]
@@ -20,10 +20,12 @@ flowchart LR
 
 - `apps/admin`: staff workflows, CRM, operations, finance, CMS and settings.
 - `apps/storefront`: public discovery, checkout, confirmation and traveler portal.
-- `apps/api`: typed HTTP boundary and repository port. `TOMS_DEMO_MODE=1` uses deterministic memory data for local acceptance; disabling it is intentionally blocked until a rotated server secret and production repository adapter are supplied.
+- `apps/api`: Elysia HTTP boundary organized as route → service → repository → Drizzle. Protected routes validate Supabase JWTs, resolve one active tenant membership, and execute under PostgreSQL RLS context.
 - `apps/worker`: hold expiry and idempotent outbox processing.
 - `packages/domain`: framework-free pricing, inventory, lifecycle and authorization rules.
 - `packages/contracts`: Zod request contracts shared at service boundaries.
-- `supabase`: authoritative schema, RLS, atomic booking functions and deterministic seed data.
+- `packages/db`: authoritative Drizzle schema, PostgreSQL client and reusable RLS transaction context.
+- `supabase/drizzle`: reviewed generated migrations plus custom PostgreSQL RLS/atomic inventory SQL.
+- `supabase/seed.sql`: bilingual development data loaded into PostgreSQL; no production route reads hardcoded arrays.
 
-The storefront never imports Admin UI. Operational writes flow through the API or security-definer database functions; UI state is not authoritative.
+The storefront never imports Admin UI. Operational writes flow through the API or narrowly scoped database functions; UI state is not authoritative. Locale-aware requests send `x-toms-locale`, while tenant storefront context is resolved from the host rather than a client-selected tenant identifier.

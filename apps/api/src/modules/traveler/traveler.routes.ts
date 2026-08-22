@@ -1,0 +1,23 @@
+import { Elysia } from "elysia";
+import type { VerifyAccessToken } from "../../plugins/auth.plugin";
+import type { ApiServices } from "../../services";
+import { ApiError } from "../../shared/errors/api-error";
+
+const localeFrom = (value: unknown) => value === "en" ? "en" as const : "mn" as const;
+
+export function travelerModule(services: ApiServices | undefined, verifyAccessToken: VerifyAccessToken) {
+  const authenticate = async (headers: Headers) => {
+    const token = await verifyAccessToken(headers.get("authorization"));
+    if (!services) throw new ApiError(503, "SERVICE_UNAVAILABLE", "Database services are unavailable");
+    return token;
+  };
+  return new Elysia({ name: "module.traveler" })
+    .get("/api/v1/me/trips", async ({ request, query }) => {
+      const token = await authenticate(request.headers);
+      return services!.traveler.list(token, localeFrom(query.locale));
+    }, { detail: { tags: ["Travelers"], summary: "List authenticated traveler trips" } })
+    .get("/api/v1/me/trips/:id", async ({ request, params, query }) => {
+      const token = await authenticate(request.headers);
+      return services!.traveler.get(token, params.id, localeFrom(query.locale));
+    }, { detail: { tags: ["Travelers"], summary: "Read authenticated traveler trip" } });
+}

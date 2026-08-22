@@ -12,11 +12,21 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@hono/node-server": "2.1.1",
-    "@supabase/supabase-js": "2.112.3",
+    "@elysia/cors": "1.4.2",
+    "@elysia/eden": "1.4.10",
+    "@elysia/node": "1.4.6",
+    "@elysia/openapi": "1.4.15",
+    "@elysia/opentelemetry": "1.4.12",
+    "@sinclair/typebox": "0.34.52",
     "@toms/contracts": "workspace:*",
+    "@toms/db": "workspace:*",
     "@toms/domain": "workspace:*",
-    "hono": "4.13.3",
+    "drizzle-orm": "0.45.2",
+    "elysia": "1.4.29",
+    "file-type": "22.0.2",
+    "jose": "6.2.9",
+    "openapi-types": "12.1.3",
+    "pino": "10.3.1",
     "zod": "4.4.3"
   },
   "devDependencies": {

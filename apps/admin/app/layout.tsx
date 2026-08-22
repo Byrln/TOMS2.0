@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
+import { localeCookieName, normalizeLocale } from "@toms/i18n";
+import { LocaleProvider } from "@toms/i18n/react";
+import { getServerI18n } from "@/lib/i18n";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: { default: "TOMS Admin", template: "%s | TOMS" },
-  description: "Travel Operations OS for multi-day travel companies",
-  robots: { index: false, follow: false }
-};
-
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="mn"><body>{children}</body></html>;
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getServerI18n();
+  return { title: { default: `TOMS — ${t("app.admin")}`, template: "%s | TOMS" }, description: t("page.dashboard.description"), robots: { index: false, follow: false } };
 }
 
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const cookieStore = await cookies();
+  const locale = normalizeLocale(cookieStore.get(localeCookieName)?.value);
+  return <html lang={locale}><body suppressHydrationWarning><LocaleProvider initialLocale={locale}>{children}</LocaleProvider></body></html>;
+}

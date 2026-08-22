@@ -1,96 +1,126 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createApp } from "./app";
-import { createDemoRepository } from "./repository";
+import type { ApiServices } from "./services";
 
-describe("TOMS API vertical flow", () => {
-  const ownerHeaders = { "content-type": "application/json", "x-demo-role": "OWNER" };
-  let app: ReturnType<typeof createApp>;
+const request = (path: string, init?: RequestInit) => new Request(`http://localhost${path}`, init);
 
-  beforeEach(() => {
-    app = createApp({ repository: createDemoRepository(), now: () => new Date("2026-08-21T09:00:00Z") });
+describe("TOMS Elysia application boundary", () => {
+  it("serves health and OpenAPI with a request identifier", async () => {
+    const app = createApp({ now: () => new Date("2026-08-21T09:00:00.000Z") });
+
+    const health = await app.handle(request("/health"));
+    expect(health.status).toBe(200);
+    expect(health.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
+    await expect(health.json()).resolves.toMatchObject({ service: "toms-api", status: "ok", time: "2026-08-21T09:00:00.000Z" });
+
+    const spec = await app.handle(request("/openapi/json"));
+    expect(spec.status).toBe(200);
+    const document = await spec.json() as { paths: Record<string, unknown> };
+    expect(document.paths).toHaveProperty("/api/v1/admin/tours");
+    expect(document.paths).toHaveProperty("/api/v1/storefront/bootstrap");
   });
 
-  it("serves health, dashboard and published storefront data", async () => {
-    expect((await app.request("/health")).status).toBe(200);
-    const dashboard = await (await app.request("/api/v1/admin/dashboard", { headers: ownerHeaders })).json();
-    expect(dashboard.metrics.grossBookingValueMinor).toBeGreaterThan(0);
-    const bootstrap = await (await app.request("/api/v1/storefront/bootstrap")).json();
-    expect(bootstrap.featuredTours.length).toBeGreaterThanOrEqual(4);
-    expect(bootstrap.tenant.name).toBe("TOMS Demo Travel");
+  it("rejects protected routes when only legacy demo headers are supplied", async () => {
+    const app = createApp();
+    const response = await app.handle(request("/api/v1/admin/tours", {
+      headers: { "x-demo-role": "OWNER", "x-demo-traveler": "bat@example.com" },
+    }));
+
+    expect(response.status).toBe(401);
+    const body = await response.json() as { error: { code: string; requestId: string } };
+    expect(body.error.code).toBe("AUTH_REQUIRED");
+    expect(body.error.requestId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("creates an inventory hold, confirms checkout, and exposes the trip only to its traveler", async () => {
-    const tours = await (await app.request("/api/v1/tours")).json();
-    const departureId = tours.items[0].departures[0].id;
-    const holdResponse = await app.request("/api/v1/booking-holds", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ departureId, partySize: 2, idempotencyKey: "hold-e2e-123456" })
-    });
+  it("does not expose the generic resource API", async () => {
+    const app = createApp();
+    const response = await app.handle(request("/api/v1/admin/resources/tours"));
+    expect(response.status).toBe(404);
+  });
+
+  it("serves the public catalog in the requested locale and host context", async () => {
+    const bootstrap = vi.fn(async (host: string, locale: "mn" | "en") => ({ host, locale, featuredTours: [] }));
+    const listTours = vi.fn(async (host: string, locale: "mn" | "en") => ({ items: [{ slug: "gobi", name: locale === "en" ? "Gobi" : "Говь" }], host }));
+    const services = { storefront: { bootstrap, listTours, getTour: vi.fn() } } as unknown as ApiServices;
+    const app = createApp({ services });
+
+    const bootstrapResponse = await app.handle(request("/api/v1/storefront/bootstrap?locale=en", { headers: { host: "travel.example" } }));
+    expect(bootstrapResponse.status).toBe(200);
+    await expect(bootstrapResponse.json()).resolves.toMatchObject({ locale: "en", host: "travel.example" });
+    expect(bootstrap).toHaveBeenCalledWith("travel.example", "en");
+
+    const toursResponse = await app.handle(request("/api/v1/tours?locale=en", { headers: { host: "travel.example" } }));
+    expect(toursResponse.status).toBe(200);
+    await expect(toursResponse.json()).resolves.toMatchObject({ items: [{ slug: "gobi", name: "Gobi" }] });
+  });
+
+  it("requires and forwards idempotency keys for inventory holds and checkout", async () => {
+    const createHold = vi.fn(async (_host: string, input: unknown, idempotencyKey: string) => ({ id: "hold-1", input, idempotencyKey }));
+    const checkout = vi.fn(async (_host: string, input: unknown, idempotencyKey: string) => ({ id: "booking-1", organizerEmail: "traveler@example.com", input, idempotencyKey }));
+    const services = { bookings: { createHold, checkout } } as unknown as ApiServices;
+    const app = createApp({ services });
+
+    const missingKey = await app.handle(request("/api/v1/booking-holds", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ departureId: "31111111-1111-4111-8111-111111111111", partySize: 2 }) }));
+    expect(missingKey.status).toBe(400);
+
+    const holdResponse = await app.handle(request("/api/v1/booking-holds", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": "hold-key-1", host: "travel.example" }, body: JSON.stringify({ departureId: "31111111-1111-4111-8111-111111111111", partySize: 2 }) }));
     expect(holdResponse.status).toBe(201);
-    const hold = await holdResponse.json();
+    expect(createHold).toHaveBeenCalledWith("travel.example", expect.objectContaining({ partySize: 2 }), "hold-key-1");
 
-    const checkoutResponse = await app.request("/api/v1/checkout/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        holdId: hold.id,
-        payer: { fullName: "Bat-Orgil Munkhbat", email: "bat@example.com" },
-        travelers: [
-          { fullName: "Bat-Orgil Munkhbat", nationality: "MN" },
-          { fullName: "Enkhjin Munkhbat", nationality: "MN" }
-        ],
-        paymentMethod: "DEMO",
-        termsAccepted: true,
-        idempotencyKey: "checkout-e2e-123456"
-      })
-    });
+    const checkoutResponse = await app.handle(request("/api/v1/checkout/sessions", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": "checkout-key-1", host: "travel.example" }, body: JSON.stringify({ holdId: "51111111-1111-4111-8111-111111111111", payer: { fullName: "Traveler One", email: "traveler@example.com" }, travelers: [{ fullName: "Traveler One", nationality: "MN" }], termsAccepted: true }) }));
     expect(checkoutResponse.status).toBe(201);
-    const booking = await checkoutResponse.json();
-    expect(booking.status).toBe("CONFIRMED");
-
-    expect((await app.request(`/api/v1/me/trips/${booking.id}`)).status).toBe(401);
-    const tripResponse = await app.request(`/api/v1/me/trips/${booking.id}`, { headers: { "x-demo-traveler": "bat@example.com" } });
-    expect(tripResponse.status).toBe(200);
-    const trip = await tripResponse.json();
-    expect(trip.itinerary.every((event: { internalNote?: string }) => event.internalNote === undefined)).toBe(true);
+    expect(checkout).toHaveBeenCalledWith("travel.example", expect.objectContaining({ termsAccepted: true }), "checkout-key-1");
   });
 
-  it("publishes a newly created tour and departure through the admin boundary", async () => {
-    const tourResponse = await app.request("/api/v1/admin/tours", {
-      method: "POST",
-      headers: ownerHeaders,
-      body: JSON.stringify({ name: "Altai Eagle Journey", slug: "altai-eagle-journey", summary: "Western Mongolia expedition", description: "A seven-day small-group journey.", durationDays: 7, durationNights: 6, basePriceMinor: 4_250_000, currency: "MNT", destinations: ["Altai"] })
-    });
-    expect(tourResponse.status).toBe(201);
-    const tour = await tourResponse.json();
+  it("serves only the authenticated traveler's trips", async () => {
+    const token = { userId: "81111111-1111-4111-8111-111111111111", claims: { sub: "81111111-1111-4111-8111-111111111111", iss: "https://auth.example" }, token: "signed-token" };
+    const verifyAccessToken = vi.fn(async () => token);
+    const list = vi.fn(async (_token: unknown, locale: "mn" | "en") => ({ items: [{ id: "booking-1", locale }] }));
+    const services = { traveler: { list, get: vi.fn() } } as unknown as ApiServices;
+    const app = createApp({ services, verifyAccessToken });
 
-    const departureResponse = await app.request("/api/v1/admin/departures", {
-      method: "POST",
-      headers: ownerHeaders,
-      body: JSON.stringify({ tourId: tour.id, code: "AEJ-2026-10-03", startsOn: "2026-10-03", endsOn: "2026-10-09", capacity: 16, priceMinor: 4_250_000, currency: "MNT" })
-    });
+    const response = await app.handle(request("/api/v1/me/trips?locale=en", { headers: { authorization: "Bearer signed-token" } }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ items: [{ id: "booking-1", locale: "en" }] });
+    expect(list).toHaveBeenCalledWith(token, "en");
+  });
+
+  it("publishes tours and creates departures through explicit protected routes", async () => {
+    const token = { userId: "81111111-1111-4111-8111-111111111111", claims: { sub: "81111111-1111-4111-8111-111111111111" }, token: "signed-token" };
+    const actor = { userId: token.userId, tenantId: "11111111-1111-4111-8111-111111111111", role: "OWNER", claims: token.claims } as const;
+    const publish = vi.fn(async () => ({ id: "tour-1", status: "PUBLISHED" }));
+    const createDeparture = vi.fn(async () => ({ id: "departure-1", status: "OPEN" }));
+    const services = {
+      identity: { resolveActor: vi.fn(async () => actor) },
+      tours: { publish, list: vi.fn(), create: vi.fn() },
+      departures: { create: createDeparture, list: vi.fn() },
+    } as unknown as ApiServices;
+    const app = createApp({ services, verifyAccessToken: vi.fn(async () => token) });
+
+    const publishResponse = await app.handle(request("/api/v1/admin/tours/21111111-1111-4111-8111-111111111111/publish", { method: "POST", headers: { authorization: "Bearer signed-token" } }));
+    expect(publishResponse.status).toBe(200);
+    expect(publish).toHaveBeenCalledWith(actor, "21111111-1111-4111-8111-111111111111");
+
+    const departureResponse = await app.handle(request("/api/v1/admin/departures", { method: "POST", headers: { authorization: "Bearer signed-token", "content-type": "application/json" }, body: JSON.stringify({ tourId: "21111111-1111-4111-8111-111111111111", code: "ALT-2026-12-01", startsOn: "2026-12-01", endsOn: "2026-12-08", capacity: 14, priceMinor: 4150000, currency: "MNT" }) }));
     expect(departureResponse.status).toBe(201);
-
-    expect((await app.request(`/api/v1/admin/tours/${tour.id}/publish`, { method: "POST", headers: ownerHeaders })).status).toBe(200);
-    const publicTour = await app.request("/api/v1/tours/altai-eagle-journey");
-    expect(publicTour.status).toBe(200);
+    expect(createDeparture).toHaveBeenCalledWith(actor, expect.objectContaining({ capacity: 14 }));
   });
 
-  it("propagates a traveler-visible staff itinerary update to the traveler portal", async () => {
-    const trips = await (await app.request("/api/v1/me/trips", { headers: { "x-demo-traveler": "bat@example.com" } })).json();
-    const trip = await (await app.request(`/api/v1/me/trips/${trips.items[0].id}`, { headers: { "x-demo-traveler": "bat@example.com" } })).json();
-    const event = trip.itinerary[0];
+  it("exposes explicit tenant-protected back-office collection routes", async () => {
+    const token = { userId: "81111111-1111-4111-8111-111111111111", claims: { sub: "81111111-1111-4111-8111-111111111111" }, token: "signed-token" };
+    const actor = { userId: token.userId, tenantId: "11111111-1111-4111-8111-111111111111", role: "OWNER", claims: token.claims } as const;
+    const list = vi.fn(async (_actor: unknown, resource: string, locale: "mn" | "en") => ({ data: [{ id: `${resource}-1`, locale }] }));
+    const services = {
+      identity: { resolveActor: vi.fn(async () => actor) },
+      backoffice: { list },
+    } as unknown as ApiServices;
+    const app = createApp({ services, verifyAccessToken: vi.fn(async () => token) });
 
-    const update = await app.request(`/api/v1/admin/departures/${trip.departure.id}/itinerary/${event.id}`, {
-      method: "PATCH",
-      headers: ownerHeaders,
-      body: JSON.stringify({ eventId: event.id, title: "Airport meeting point updated", startsAt: event.startsAt, location: "Chinggis Khaan Airport, Terminal 2", details: "Meet beside information desk B.", visibility: "TRAVELER" })
-    });
-    expect(update.status).toBe(200);
-
-    const refreshed = await (await app.request(`/api/v1/me/trips/${trip.id}`, { headers: { "x-demo-traveler": "bat@example.com" } })).json();
-    expect(refreshed.itinerary[0].title).toBe("Airport meeting point updated");
+    for (const resource of ["bookings", "travelers", "customers", "conversations", "payments", "invoices", "documents", "promotions"] as const) {
+      const response = await app.handle(request(`/api/v1/admin/${resource}`, { headers: { authorization: "Bearer signed-token", "x-toms-locale": "en" } }));
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ data: [{ id: `${resource}-1`, locale: "en" }] });
+      expect(list).toHaveBeenCalledWith(actor, resource, "en");
+    }
   });
 });
-
