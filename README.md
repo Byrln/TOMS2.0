@@ -22,16 +22,21 @@ The local applications run at:
 - Storefront and traveler portal: `http://localhost:3001`
 - API: `http://localhost:4000`
 
-`TOMS_DEMO_MODE=1` uses the deterministic in-memory acceptance repository. Set it to `0` only after adding a rotated server-only Supabase secret and wiring the production repository adapter. Never expose `SUPABASE_SECRET_KEY` to a browser bundle.
+Data-backed API routes require `DATABASE_URL`. Staff and traveler authentication use Supabase JWTs; no demo headers or in-memory production repository exist. Never expose `DATABASE_URL`, migration credentials, or Supabase server secrets to a browser bundle.
+
+The UI supports Mongolian (`mn`) and English (`en`). The selected locale is stored in the `toms-locale` cookie and is forwarded to the API for localized content. Author-managed tour, CMS, promotion, and storefront content stores both language variants.
 
 ## Database
 
 ```powershell
-pnpm supabase start
-pnpm supabase db reset
+pnpm --filter @toms/db generate
+pnpm --filter @toms/db check
+pnpm --filter @toms/db migrate
 ```
 
-The migrations create the canonical product, departure, booking, traveler, supplier, finance, communication, storefront, CMS, promotion, loyalty, audit, and outbox domains. Every application table has RLS enabled. Traveler access requires both a verified email identity and an explicit booking relationship; a booking identifier alone never grants access.
+Drizzle schema is the source of truth. Generated migrations live in `supabase/drizzle`; custom SQL in the same sequence supplies PostgreSQL functions, grants, and RLS policies. Runtime traffic uses `DATABASE_URL` with prepared statements disabled for Supabase transaction pooling. Prefer `DATABASE_MIGRATION_URL` for migration execution.
+
+The migrations create the canonical product, departure, booking, traveler, supplier, finance, communication, storefront, CMS, promotion, loyalty, audit, and outbox domains. Tenant-owned tables have RLS enabled. Traveler access requires a verified JWT plus an explicit booking-party relationship; a booking identifier alone never grants access.
 
 ## Quality gates
 
@@ -43,7 +48,7 @@ pnpm build
 pnpm e2e
 ```
 
-The Playwright suite covers staff sign-in, admin tour/departure publishing, public discovery and checkout, traveler claim and portal access, itinerary propagation, internal-note redaction, mobile layout, and automated accessibility checks.
+Unit and HTTP-boundary tests run without external credentials. PostgreSQL/RLS/concurrency and authenticated end-to-end tests require a configured Supabase development project and must not be reported as passing when those credentials are absent.
 
 ## Architecture
 

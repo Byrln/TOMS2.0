@@ -3,11 +3,13 @@ import Link from "next/link";
 import { ArrowRight, Search } from "lucide-react";
 import { TourCard, TrustStrip } from "@toms/storefront-ui";
 import { getBootstrap } from "@/lib/api";
+import { getServerI18n } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const data = await getBootstrap();
+  const { t } = await getServerI18n();
   const hero = data.featuredTours[3] ?? data.featuredTours[0];
   if (!hero) return null;
   return (
@@ -22,53 +24,47 @@ export default async function Home() {
           sizes="100vw"
         />
         <div className="hero__content">
-          <h1>Дэлхийг өөрийнхөөрөө мэдэр</h1>
-          <p>
-            Мэргэжлийн багийн бэлтгэсэн, баталгаатай олон өдрийн аяллаар
-            дараагийн түүхээ эхлүүл.
-          </p>
+          <h1>{t("public.heroTitle")}</h1>
+          <p>{t("public.heroDescription")}</p>
           <div className="hero__actions">
             <Link className="primary-link" href="/tours">
-              Аяллаа хайх <ArrowRight size={16} />
+              {t("public.findTrip")} <ArrowRight size={16} />
             </Link>
             <Link className="secondary-link" href="/about">
-              Бидний тухай
+              {t("nav.about")}
             </Link>
           </div>
         </div>
       </section>
       <form className="search-panel" action="/tours">
         <label className="field">
-          <span>Хаашаа явах вэ?</span>
-          <input name="q" placeholder="Жишээ: Япон, Говь, Европ" />
+          <span>{t("public.where")}</span>
+          <input name="q" placeholder={t("public.searchExample")} />
         </label>
         <label className="field">
-          <span>Хэзээ явах вэ?</span>
+          <span>{t("public.when")}</span>
           <input type="month" name="month" defaultValue="2026-10" />
         </label>
         <label className="field">
-          <span>Аяллын төрөл</span>
+          <span>{t("public.tripType")}</span>
           <select name="type">
-            <option>Бүх аялал</option>
-            <option>Адал явдал</option>
-            <option>Соёлын аялал</option>
+            <option>{t("public.allTours")}</option>
+            <option>{t("public.adventure")}</option>
+            <option>{t("public.cultural")}</option>
           </select>
         </label>
         <button type="submit">
-          <Search size={15} /> Хайх
+          <Search size={15} /> {t("common.search")}
         </button>
       </form>
       <section className="section">
         <div className="page-container">
           <header className="section-header">
             <div>
-              <h2>Онцлох аяллууд</h2>
-              <p>
-                Баталгаатай гаралт, ойлгомжтой үнэ, мэргэжлийн зохион
-                байгуулалт.
-              </p>
+              <h2>{t("public.featuredTours")}</h2>
+              <p>{t("public.featuredDescription")}</p>
             </div>
-            <Link href="/tours">Бүгдийг харах →</Link>
+            <Link href="/tours">{t("public.viewAll")} →</Link>
           </header>
           <div className="tour-grid">
             {data.featuredTours.slice(0, 4).map((tour) => (
@@ -92,13 +88,10 @@ export default async function Home() {
       <section className="section">
         <div className="page-container promo-banner">
           <div>
-            <h2>Эрт захиалбал илүү ашигтай</h2>
-            <p>
-              Төлөвлөгөөгөө эрт баталгаажуулж, сонгосон departure дээрх бодит
-              урамшууллыг эдэл.
-            </p>
+            <h2>{t("public.earlyBooking")}</h2>
+            <p>{t("public.promotionDescription")}</p>
             <Link className="primary-link" href="/promotions">
-              Урамшуулал харах
+              {t("public.viewPromotions")}
             </Link>
           </div>
           <div className="promo-codes">

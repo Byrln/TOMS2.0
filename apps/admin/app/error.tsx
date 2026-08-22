@@ -1,6 +1,7 @@
 "use client";
+import { useLocale } from "@toms/i18n/react";
 
 export default function ErrorPage({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  return <main className="error-state"><h1>Мэдээлэл ачаалсангүй</h1><p>API холболт эсвэл сүлжээний төлөвийг шалгаад дахин оролдоно уу.</p><button className="button button--primary" type="button" onClick={reset}>Дахин оролдох</button></main>;
+  const { t } = useLocale();
+  return <main className="error-state"><h1>{t("state.errorTitle")}</h1><p>{t("state.errorDescription")}</p><button className="button button--primary" type="button" onClick={reset}>{t("common.retry")}</button></main>;
 }
-

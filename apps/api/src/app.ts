@@ -1,120 +1,100 @@
-import { Hono } from "hono";
-import { cors } from "hono/cors";
+import { randomUUID } from "node:crypto";
+import { cors } from "@elysia/cors";
+import { openapi } from "@elysia/openapi";
+import { Elysia, type ElysiaAdapter } from "elysia";
 import { z } from "zod";
-import { bookingHoldRequestSchema, checkoutRequestSchema, itineraryUpdateSchema } from "@toms/contracts";
-import { BookingConflictError, can, type StaffRole } from "@toms/domain";
-import { assertDemoRole, type TomsRepository } from "./repository";
+import { requestContextPlugin } from "./plugins/request-context.plugin";
+import { observabilityPlugin } from "./plugins/observability.plugin";
+import { bearerToken, type VerifyAccessToken } from "./plugins/auth.plugin";
+import type { ApiServices } from "./services";
+import { storefrontModule } from "./modules/storefront/storefront.routes";
+import { toursModule } from "./modules/tours/tours.routes";
+import { bookingModule } from "./modules/bookings/booking.routes";
+import { travelerModule } from "./modules/traveler/traveler.routes";
+import { departureModule } from "./modules/departures/departure.routes";
+import { dashboardModule } from "./modules/dashboard/dashboard.routes";
+import { backofficeModule } from "./modules/backoffice/backoffice.routes";
+import { ApiError, errorBody } from "./shared/errors/api-error";
 
-export interface AppDependencies {
-  repository: TomsRepository;
+export interface CreateAppOptions {
+  adapter?: ElysiaAdapter;
   now?: () => Date;
+  services?: ApiServices;
+  verifyAccessToken?: VerifyAccessToken;
+  logLevel?: "fatal" | "error" | "warn" | "info" | "debug" | "trace" | "silent";
 }
 
-const createTourSchema = z.object({
-  name: z.string().min(2),
-  slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  summary: z.string().min(10),
-  description: z.string().min(10),
-  durationDays: z.number().int().positive(),
-  durationNights: z.number().int().nonnegative(),
-  basePriceMinor: z.number().int().nonnegative(),
-  currency: z.string().length(3),
-  destinations: z.array(z.string().min(2)).min(1)
-});
+const rejectUnconfiguredToken: VerifyAccessToken = async (authorization) => {
+  bearerToken(authorization);
+  throw new ApiError(503, "SERVICE_UNAVAILABLE", "JWT verification is not configured");
+};
 
-const createDepartureSchema = z.object({
-  tourId: z.uuid(),
-  code: z.string().min(4),
-  startsOn: z.iso.date(),
-  endsOn: z.iso.date(),
-  capacity: z.number().int().positive(),
-  priceMinor: z.number().int().nonnegative(),
-  currency: z.string().length(3)
-});
+export function createApp(options: CreateAppOptions = {}) {
+  const now = options.now ?? (() => new Date());
+  const verifyAccessToken = options.verifyAccessToken ?? rejectUnconfiguredToken;
 
-function travelerEmail(header: string | undefined): string {
-  if (!header || !z.email().safeParse(header).success) throw new Error("UNAUTHORIZED");
-  return header;
+  return new Elysia({
+    name: "toms-api",
+    allowUnsafeValidationDetails: false,
+    ...(options.adapter ? { adapter: options.adapter } : {}),
+  })
+    .use(cors({
+      origin: [/^https?:\/\/(localhost|127\.0\.0\.1):(3000|3001)$/],
+      allowedHeaders: ["authorization", "content-type", "idempotency-key", "x-request-id", "x-toms-locale", "x-toms-storefront-host"],
+      methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      credentials: true,
+    }))
+    .use(requestContextPlugin)
+    .use(observabilityPlugin(options.logLevel ?? (process.env.NODE_ENV === "test" ? "silent" : "info")))
+    .use(openapi({
+      path: "/openapi",
+      documentation: {
+        info: { title: "TOMS API", version: "1.0.0", description: "Travel Operations OS API" },
+        tags: [
+          { name: "Identity" },
+          { name: "Tours" },
+          { name: "Departures" },
+          { name: "Inventory" },
+          { name: "Bookings" },
+          { name: "Travelers" },
+          { name: "Operations" },
+          { name: "Finance" },
+          { name: "Documents" },
+          { name: "Storefront" },
+          { name: "CMS" },
+          { name: "Promotions" },
+        ],
+      },
+    }))
+    .onError(({ error, code, set, request }) => {
+      const requestId = request.headers.get("x-request-id") ?? randomUUID();
+      set.headers["x-request-id"] = requestId;
+      if (error instanceof ApiError) {
+        set.status = error.status;
+        return errorBody(error, requestId);
+      }
+      if (error instanceof z.ZodError || code === "VALIDATION") {
+        set.status = 422;
+        return errorBody(new ApiError(422, "VALIDATION_FAILED", "Request validation failed"), requestId);
+      }
+      if (code === "NOT_FOUND") {
+        set.status = 404;
+        return { error: { code: "NOT_FOUND", message: "Route not found", requestId } };
+      }
+      set.status = 500;
+      return errorBody(new ApiError(500, "INTERNAL_ERROR", "Unexpected server error"), requestId);
+    })
+    .get("/health", ({ set }) => {
+      if (!set.headers["x-request-id"]) set.headers["x-request-id"] = randomUUID();
+      return { service: "toms-api", status: "ok", time: now().toISOString() };
+    }, { detail: { summary: "Health check" } })
+    .use(storefrontModule(options.services))
+    .use(bookingModule(options.services))
+    .use(travelerModule(options.services, verifyAccessToken))
+    .use(departureModule(options.services, verifyAccessToken))
+    .use(dashboardModule(options.services, verifyAccessToken))
+    .use(backofficeModule(options.services, verifyAccessToken))
+    .use(toursModule(options.services, verifyAccessToken));
 }
 
-export function createApp(dependencies: AppDependencies) {
-  const app = new Hono();
-  const now = dependencies.now ?? (() => new Date());
-
-  app.use("*", cors({ origin: ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"], allowHeaders: ["Content-Type", "Authorization", "X-Demo-Role", "X-Demo-Traveler"], allowMethods: ["GET", "POST", "PATCH", "OPTIONS"] }));
-  app.onError((error, context) => {
-    if (error.message === "UNAUTHORIZED") return context.json({ error: { code: "UNAUTHORIZED", message: "Authentication required" } }, 401);
-    if (error instanceof BookingConflictError) return context.json({ error: { code: "CONFLICT", message: error.message } }, 409);
-    if (error instanceof z.ZodError) return context.json({ error: { code: "VALIDATION_ERROR", message: "Request validation failed", issues: error.issues } }, 422);
-    return context.json({ error: { code: "INTERNAL_ERROR", message: "Unexpected server error" } }, 500);
-  });
-
-  function roleFrom(context: { req: { header(name: string): string | undefined } }): StaffRole {
-    return assertDemoRole(context.req.header("x-demo-role"));
-  }
-
-  app.get("/health", (context) => context.json({ service: "toms-api", status: "ok", time: now().toISOString() }));
-  app.get("/api/v1/storefront/bootstrap", (context) => {
-    const tours = dependencies.repository.listTours();
-    return context.json({ tenant: dependencies.repository.tenant(), storefront: dependencies.repository.storefront(), featuredTours: tours.slice(0, 6) });
-  });
-  app.get("/api/v1/tours", (context) => context.json({ items: dependencies.repository.listTours(), total: dependencies.repository.listTours().length }));
-  app.get("/api/v1/tours/:slug", (context) => {
-    const selected = dependencies.repository.getTourBySlug(context.req.param("slug"));
-    return selected ? context.json(selected) : context.json({ error: { code: "NOT_FOUND", message: "Tour not found" } }, 404);
-  });
-  app.post("/api/v1/booking-holds", async (context) => {
-    const input = bookingHoldRequestSchema.parse(await context.req.json());
-    return context.json(dependencies.repository.createHold(input, now()), 201);
-  });
-  app.post("/api/v1/checkout/sessions", async (context) => {
-    const input = checkoutRequestSchema.parse(await context.req.json());
-    return context.json(dependencies.repository.checkout(input, now()), 201);
-  });
-
-  app.get("/api/v1/me/trips", (context) => {
-    const email = travelerEmail(context.req.header("x-demo-traveler"));
-    const items = dependencies.repository.listTrips(email);
-    return context.json({ items, total: items.length });
-  });
-  app.get("/api/v1/me/trips/:id", (context) => {
-    const email = travelerEmail(context.req.header("x-demo-traveler"));
-    const trip = dependencies.repository.getTrip(context.req.param("id"), email);
-    if (!trip) return context.json({ error: { code: "NOT_FOUND", message: "Trip not found" } }, 404);
-    return context.json({ ...trip.booking, tour: trip.tour, departure: trip.departure, itinerary: trip.itinerary });
-  });
-
-  app.get("/api/v1/admin/dashboard", (context) => {
-    roleFrom(context);
-    return context.json(dependencies.repository.dashboard());
-  });
-  app.get("/api/v1/admin/resources/:resource", (context) => {
-    roleFrom(context);
-    const items = dependencies.repository.resources(context.req.param("resource"));
-    return context.json({ items, total: items.length });
-  });
-  app.post("/api/v1/admin/tours", async (context) => {
-    const role = roleFrom(context);
-    if (!can(role, "tour:write")) throw new Error("UNAUTHORIZED");
-    return context.json(dependencies.repository.createTour(createTourSchema.parse(await context.req.json())), 201);
-  });
-  app.post("/api/v1/admin/departures", async (context) => {
-    const role = roleFrom(context);
-    if (!can(role, "departure:operate")) throw new Error("UNAUTHORIZED");
-    return context.json(dependencies.repository.createDeparture(createDepartureSchema.parse(await context.req.json())), 201);
-  });
-  app.post("/api/v1/admin/tours/:id/publish", (context) => {
-    const role = roleFrom(context);
-    if (!can(role, "storefront:publish")) throw new Error("UNAUTHORIZED");
-    return context.json(dependencies.repository.publishTour(context.req.param("id")));
-  });
-  app.patch("/api/v1/admin/departures/:departureId/itinerary/:eventId", async (context) => {
-    const role = roleFrom(context);
-    if (!can(role, "departure:operate")) throw new Error("UNAUTHORIZED");
-    const input = itineraryUpdateSchema.parse(await context.req.json());
-    if (input.eventId !== context.req.param("eventId")) throw new BookingConflictError("Event identifier mismatch");
-    return context.json(dependencies.repository.updateItinerary(context.req.param("departureId"), context.req.param("eventId"), input));
-  });
-
-  return app;
-}
+export type App = ReturnType<typeof createApp>;

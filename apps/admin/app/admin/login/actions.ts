@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { staffIdentityFromClaims } from "@toms/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { getServerI18n } from "@/lib/i18n";
 
 function field(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -14,18 +15,19 @@ function loginError(message: string): never {
 }
 
 export async function signInStaff(formData: FormData) {
+  const { t } = await getServerI18n();
   const email = field(formData, "email");
   const password = field(formData, "password");
   const supabase = await createAdminSupabaseClient();
-  if (!supabase) redirect("/?demo=1");
+  if (!supabase) loginError(t("auth.configurationMissing"));
 
   const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-  if (signInError) loginError("Имэйл эсвэл нууц үг буруу байна.");
+  if (signInError) loginError(t("auth.invalidCredentials"));
 
   const { data, error: claimsError } = await supabase.auth.getClaims();
   if (claimsError || !data?.claims) {
     await supabase.auth.signOut();
-    loginError("Нэвтрэх эрхийг баталгаажуулж чадсангүй.");
+    loginError(t("auth.verifyFailed"));
   }
 
   let identity;
@@ -33,7 +35,7 @@ export async function signInStaff(formData: FormData) {
     identity = staffIdentityFromClaims(data.claims);
   } catch {
     await supabase.auth.signOut();
-    loginError("Staff tenant болон role claim дутуу байна.");
+    loginError(t("auth.claimsMissing"));
   }
 
   const { data: membership, error: membershipError } = await supabase
@@ -46,7 +48,7 @@ export async function signInStaff(formData: FormData) {
 
   if (membershipError || !membership || membership.role !== identity.role) {
     await supabase.auth.signOut();
-    loginError("Идэвхтэй tenant membership олдсонгүй.");
+    loginError(t("auth.membershipMissing"));
   }
 
   redirect("/");
@@ -65,13 +67,14 @@ export async function sendStaffRecovery(formData: FormData) {
 }
 
 export async function resetStaffPassword(formData: FormData) {
+  const { t } = await getServerI18n();
   const password = field(formData, "password");
   const confirmation = field(formData, "confirmation");
   if (password.length < 12 || password !== confirmation) {
-    redirect("/admin/reset-password?error=Нууц+үг+12+тэмдэгтээс+урт,+ижил+байх+ёстой.");
+    redirect(`/admin/reset-password?error=${encodeURIComponent(t("auth.passwordValidation"))}`);
   }
   const supabase = await createAdminSupabaseClient();
-  if (!supabase) redirect("/admin/login?reset=demo");
+  if (!supabase) redirect("/admin/login?error=configuration");
   const { error } = await supabase.auth.updateUser({ password });
   if (error) redirect(`/admin/reset-password?error=${encodeURIComponent(error.message)}`);
   redirect("/admin/login?reset=1");

@@ -1,3 +1,5 @@
+"use client";
+
 import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -11,10 +13,13 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { formatCurrencyMinor } from "@toms/config";
+import { intlLocale } from "@toms/i18n";
+import { useLocale } from "@toms/i18n/react";
 
 export function StorefrontLogo() {
+  const { t } = useLocale();
   return (
-    <Link className="storefront-logo" href="/" aria-label="TOMS нүүр">
+    <Link className="storefront-logo" href="/" aria-label={t("public.homeAria")}>
       <span className="storefront-logo__icon" aria-hidden="true">
         ✦
       </span>
@@ -24,29 +29,39 @@ export function StorefrontLogo() {
 }
 
 export function StorefrontHeader() {
+  const { t } = useLocale();
   return (
     <header className="storefront-header">
       <StorefrontLogo />
-      <nav aria-label="Үндсэн цэс">
-        <Link href="/tours">Аяллууд</Link>
-        <Link href="/destinations">Очих газар</Link>
-        <Link href="/promotions">Урамшуулал</Link>
-        <Link href="/about">Бидний тухай</Link>
+      <nav aria-label={t("common.mainNavigation")}>
+        <Link href="/tours">{t("nav.publicTours")}</Link>
+        <Link href="/destinations">{t("nav.destinations")}</Link>
+        <Link href="/promotions">{t("nav.promotions")}</Link>
+        <Link href="/about">{t("nav.about")}</Link>
       </nav>
       <div className="storefront-header__tools">
-        <Link href="/tours" aria-label="Хайх">
+        <LocaleSwitcher />
+        <Link href="/tours" aria-label={t("common.search")}>
           <Search size={17} />
         </Link>
         <Link href="/account/trips">
           <CircleUserRound size={17} />
-          Миний аялал
+          {t("nav.myTrips")}
         </Link>
-        <Link href="/tours" className="mobile-menu" aria-label="Цэс">
+        <Link href="/tours" className="mobile-menu" aria-label={t("common.menu")}>
           <Menu size={20} />
         </Link>
       </div>
     </header>
   );
+}
+
+export function LocaleSwitcher() {
+  const { locale, setLocale, t } = useLocale();
+  return <div className="locale-switcher" role="group" aria-label={t("language.label")}>
+    <button type="button" aria-pressed={locale === "mn"} aria-label={t("language.switchToMn")} onClick={() => setLocale("mn")}>MN</button>
+    <button type="button" aria-pressed={locale === "en"} aria-label={t("language.switchToEn")} onClick={() => setLocale("en")}>EN</button>
+  </div>;
 }
 
 export interface TourCardView {
@@ -60,12 +75,13 @@ export interface TourCardView {
 }
 
 export function TourCard({ tour }: { tour: TourCardView }) {
+  const { locale, t } = useLocale();
   return (
     <article className="tour-card">
       <Link
         href={`/tours/${tour.slug}`}
         className="tour-card__image"
-        aria-label={`${tour.name} дэлгэрэнгүй`}
+        aria-label={t("public.tourDetails", { name: tour.name })}
       >
         <Image
           src={tour.heroImageUrl}
@@ -75,15 +91,15 @@ export function TourCard({ tour }: { tour: TourCardView }) {
         />
       </Link>
       <div className="tour-card__body">
-        <p>{tour.durationDays} өдөр</p>
+        <p>{t("common.days", { count: tour.durationDays })}</p>
         <h3>
           <Link href={`/tours/${tour.slug}`}>{tour.name}</Link>
         </h3>
         <span>{tour.summary}</span>
         <div>
-          <strong>{formatCurrencyMinor(tour.priceMinor, tour.currency)}</strong>
+          <strong>{formatCurrencyMinor(tour.priceMinor, tour.currency, intlLocale(locale))}</strong>
           <Link href={`/tours/${tour.slug}`}>
-            Дэлгэрэнгүй <ChevronRight size={15} />
+            {t("common.details")} <ChevronRight size={15} />
           </Link>
         </div>
       </div>
@@ -92,45 +108,47 @@ export function TourCard({ tour }: { tour: TourCardView }) {
 }
 
 export function TrustStrip() {
+  const { t } = useLocale();
   return (
-    <section className="trust-strip" aria-label="TOMS-ийн давуу тал">
+    <section className="trust-strip" aria-label={t("public.whyUs")}>
       <div>
         <ShieldCheck />
-        <strong>Аюулгүй төлбөр</strong>
-        <span>Баталгаатай захиалга</span>
+        <strong>{t("public.securePayment")}</strong>
+        <span>{t("public.securePaymentDetail")}</span>
       </div>
       <div>
         <Headphones />
-        <strong>24/7 дэмжлэг</strong>
-        <span>Аяллын турш</span>
+        <strong>{t("public.support")}</strong>
+        <span>{t("public.supportDetail")}</span>
       </div>
       <div>
         <Globe2 />
-        <strong>Орон нутгийн мэдлэг</strong>
-        <span>Шалгарсан түншүүд</span>
+        <strong>{t("public.localKnowledge")}</strong>
+        <span>{t("public.localKnowledgeDetail")}</span>
       </div>
     </section>
   );
 }
 
 export function StorefrontFooter() {
+  const { t } = useLocale();
   return (
     <footer className="storefront-footer">
       <div>
         <StorefrontLogo />
-        <p>Аяллын эхний асуултаас эцсийн өдөр хүртэлх итгэлтэй туршлага.</p>
+        <p>{t("public.footerText")}</p>
       </div>
       <div>
-        <strong>Аялал</strong>
-        <Link href="/tours">Бүх аялал</Link>
-        <Link href="/promotions">Урамшуулал</Link>
+        <strong>{t("public.travel")}</strong>
+        <Link href="/tours">{t("nav.publicTours")}</Link>
+        <Link href="/promotions">{t("nav.promotions")}</Link>
       </div>
       <div>
-        <strong>Тусламж</strong>
-        <Link href="/contact">Холбоо барих</Link>
-        <Link href="/account/trips">Миний аялал</Link>
+        <strong>{t("public.help")}</strong>
+        <Link href="/contact">{t("nav.contact")}</Link>
+        <Link href="/account/trips">{t("nav.myTrips")}</Link>
       </div>
-      <small>© 2026 TOMS. Бүх эрх хуулиар хамгаалагдсан.</small>
+      <small>{t("public.rights")}</small>
     </footer>
   );
 }

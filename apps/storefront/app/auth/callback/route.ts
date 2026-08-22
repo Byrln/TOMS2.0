@@ -15,5 +15,5 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL(next, url.origin));
     }
   }
-  return NextResponse.redirect(new URL("/login?error=Magic+link+хүчингүй+эсвэл+хугацаа+дууссан.", url.origin));
+  return NextResponse.redirect(new URL("/login?error=invalid_link", url.origin));
 }

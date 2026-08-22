@@ -12,7 +12,7 @@ export async function requestTripClaim(formData: FormData) {
   const email = value(formData, "email");
   const bookingId = value(formData, "bookingId");
   const supabase = await createTravelerSupabaseClient();
-  if (!supabase) redirect(`/account/trips?email=${encodeURIComponent(email || "bat@example.com")}`);
+  if (!supabase) redirect("/login?error=configuration");
 
   const baseUrl = process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "http://localhost:3001";
   const next = bookingId ? `/account/trips/${encodeURIComponent(bookingId)}` : "/account/trips";
