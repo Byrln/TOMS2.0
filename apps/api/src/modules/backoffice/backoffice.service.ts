@@ -1,6 +1,7 @@
 import { withUserRlsContext, type DatabaseClient, type VerifiedRlsClaims } from "@toms/db";
 import type { Actor } from "../../shared/actor";
 import { listBackofficeResource, type BackofficeResource } from "./backoffice.repository";
+import type { PageQuery } from "../../services";
 
 function claims(actor: Actor): VerifiedRlsClaims {
   return { sub: actor.userId, role: "authenticated", iss: typeof actor.claims.iss === "string" ? actor.claims.iss : "", ...(actor.claims.aud ? { aud: actor.claims.aud as string | string[] } : {}), app_metadata: { tenant_id: actor.tenantId } };
@@ -20,9 +21,13 @@ function serialize(value: unknown, locale: "mn" | "en"): unknown {
 
 export function createBackofficeService(client: DatabaseClient) {
   return {
-    async list(actor: Actor, resource: BackofficeResource, locale: "mn" | "en") {
+    async list(actor: Actor, resource: BackofficeResource, locale: "mn" | "en", query?: PageQuery) {
       const rows = await withUserRlsContext(client.db, claims(actor), (tx) => listBackofficeResource(tx, actor.tenantId, resource));
-      return { data: serialize(rows, locale) };
+      const serialized = serialize(rows, locale) as Array<Record<string, unknown>>;
+      const normalizedQuery = query?.q?.toLocaleLowerCase();
+      const filtered = normalizedQuery ? serialized.filter((row) => JSON.stringify(row).toLocaleLowerCase().includes(normalizedQuery)) : serialized;
+      const page = query?.page ?? 1; const pageSize = query?.pageSize ?? 25; const items = filtered.slice((page - 1) * pageSize, page * pageSize);
+      return { data: items, items, page: { page, pageSize, total: filtered.length, pageCount: Math.ceil(filtered.length / pageSize) }, summary: { total: filtered.length } };
     },
   };
 }

@@ -4,8 +4,14 @@ import { StorefrontFooter, StorefrontHeader } from "@toms/storefront-ui";
 import { localeCookieName, normalizeLocale } from "@toms/i18n";
 import { LocaleProvider } from "@toms/i18n/react";
 import { getServerI18n } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
+import { Geist, Noto_Serif } from "next/font/google";
 import { Providers } from "./providers";
 import "./globals.css";
+
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
+const display = Noto_Serif({ subsets: ["cyrillic", "latin"], variable: "--font-display" });
+
 
 export async function generateMetadata(): Promise<Metadata> {
   const { locale, t } = await getServerI18n();
@@ -21,5 +27,5 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const cookieStore = await cookies();
   const locale = normalizeLocale(cookieStore.get(localeCookieName)?.value);
-  return <html lang={locale} data-scroll-behavior="smooth"><body suppressHydrationWarning><LocaleProvider initialLocale={locale}><Providers><StorefrontHeader />{children}<StorefrontFooter /></Providers></LocaleProvider></body></html>;
+  return <html lang={locale} data-scroll-behavior="smooth" className={cn(geist.variable, display.variable)}><body suppressHydrationWarning><LocaleProvider initialLocale={locale}><Providers><StorefrontHeader />{children}<StorefrontFooter /></Providers></LocaleProvider></body></html>;
 }

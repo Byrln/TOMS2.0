@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AuthCard } from "@/components/auth-card";
 import { signInStaff } from "./actions";
 import { getServerI18n } from "@/lib/i18n";
+import { Button, Checkbox, Field, FieldLabel, Input } from "@toms/admin-ui";
 
 export default async function StaffLoginPage({ searchParams }: { searchParams: Promise<{ error?: string; reset?: string }> }) {
   const { error, reset } = await searchParams;
@@ -11,10 +12,10 @@ export default async function StaffLoginPage({ searchParams }: { searchParams: P
     {errorMessage ? <p className="auth-message auth-message--error" role="alert">{errorMessage}</p> : null}
     {reset ? <p className="auth-message auth-message--success">{t("auth.resetSuccess")}</p> : null}
     <form action={signInStaff} className="auth-form">
-      <label>{t("auth.email")}<input name="email" type="email" autoComplete="email" required placeholder="name@company.mn" /></label>
-      <label>{t("auth.password")}<input name="password" type="password" autoComplete="current-password" required /></label>
-      <div className="auth-form__row"><label className="auth-check"><input type="checkbox" name="remember" /> {t("auth.remember")}</label><Link href="/admin/forgot-password">{t("auth.forgotPassword")}</Link></div>
-      <button type="submit">{t("auth.signIn")}</button>
+      <Field><FieldLabel htmlFor="email">{t("auth.email")}</FieldLabel><Input id="email" name="email" type="email" autoComplete="email" required placeholder="name@company.mn" /></Field>
+      <Field><FieldLabel htmlFor="password">{t("auth.password")}</FieldLabel><Input id="password" name="password" type="password" autoComplete="current-password" required /></Field>
+      <div className="auth-form__row"><Field orientation="horizontal"><Checkbox id="remember" name="remember" /><FieldLabel htmlFor="remember">{t("auth.remember")}</FieldLabel></Field><Link href="/admin/forgot-password">{t("auth.forgotPassword")}</Link></div>
+      <Button type="submit">{t("auth.signIn")}</Button>
     </form>
   </AuthCard>;
 }

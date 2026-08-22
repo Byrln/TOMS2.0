@@ -18,8 +18,8 @@ export default defineConfig({
     { name: "mobile-chromium", testMatch: "mobile.spec.ts", use: { ...devices["Pixel 7"] } }
   ],
   webServer: [
-    { command: "pnpm --filter @toms/api dev", url: "http://127.0.0.1:4000/health", reuseExistingServer: true, timeout: 120_000 },
-    { command: "pnpm --filter @toms/admin dev", url: "http://127.0.0.1:3000/admin/login", reuseExistingServer: true, timeout: 120_000 },
-    { command: "pnpm --filter @toms/storefront dev", url: "http://127.0.0.1:3001", reuseExistingServer: true, timeout: 120_000 }
+    { command: "pnpm --filter @toms/api dev", url: "http://127.0.0.1:4000/health", reuseExistingServer: true, timeout: 120_000, env: { TOMS_DEMO_MODE: "1" } },
+    { command: "pnpm --filter @toms/admin dev", url: "http://127.0.0.1:3000/admin/login", reuseExistingServer: true, timeout: 120_000, env: { TOMS_DEMO_MODE: "1", NEXT_PUBLIC_TOMS_DEMO_MODE: "1" } },
+    { command: "pnpm --filter @toms/storefront dev", url: "http://127.0.0.1:3001", reuseExistingServer: true, timeout: 120_000, env: { TOMS_DEMO_MODE: "1", NEXT_PUBLIC_TOMS_DEMO_MODE: "1" } }
   ]
 });

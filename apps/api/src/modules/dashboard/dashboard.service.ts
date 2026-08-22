@@ -12,15 +12,23 @@ export function createDashboardService(client: DatabaseClient) {
       const result = await withUserRlsContext(client.db, claims(actor), (tx) => readDashboard(tx, actor.tenantId));
       return {
         metrics: {
-          grossBookingValueMinor: Number(result.bookingTotals?.grossBookingValueMinor ?? 0),
+          grossBookingValue: { amountMinor: Number(result.bookingTotals?.grossBookingValueMinor ?? 0), currency: "MNT" },
           confirmedBookings: result.bookingTotals?.confirmedBookings ?? 0,
           upcomingDepartures: result.departureTotals?.upcomingDepartures ?? 0,
           travelers: result.travelerTotals?.travelers ?? 0,
-          storefrontConversion: 0,
+          averageBookingValue: { amountMinor: Number(result.bookingTotals?.averageBookingValueMinor ?? 0), currency: "MNT" },
         },
-        revenueTrend: result.trend.map((item) => Number(item.value) / 1_000_000),
+        trend: result.trend.map((item) => ({ period: item.month, bookingValueMinor: Number(item.value), bookingCount: item.bookingCount })),
+        departureHealth: {
+          ready: result.upcoming.filter((item) => item.status === "GUARANTEED").length,
+          attention: result.upcoming.filter((item) => item.status === "OPEN").length,
+          atRisk: result.upcoming.filter((item) => item.confirmedCount / Math.max(item.capacity, 1) < 0.4).length,
+          averageOccupancyPercent: result.upcoming.length === 0 ? 0 : Math.round(result.upcoming.reduce((sum, item) => sum + item.confirmedCount / Math.max(item.capacity, 1) * 100, 0) / result.upcoming.length),
+        },
+        risks: [],
         bookingsByStatus: result.statuses,
-        upcomingDepartures: result.upcoming.map((item) => ({ ...item, tourName: item.tourName[locale] })),
+        upcomingDepartures: result.upcoming.map((item) => ({ ...item, tourName: item.tourName[locale], readinessPercent: Math.round(item.confirmedCount / Math.max(item.capacity, 1) * 100), riskCount: 0 })),
+        recentBookings: result.recentBookings.map((item) => ({ ...item, totalMinor: Number(item.totalMinor), tourName: item.tourName[locale] })),
       };
     },
   };

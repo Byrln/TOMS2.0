@@ -1,0 +1,6 @@
+import Link from "next/link";
+import { CreditCard, FileText, Home, LogOut, MessageSquare, PlaneTakeoff, UserRound } from "lucide-react";
+import { Button } from "@toms/storefront-ui";
+
+const links = [{ href: "/account", label: "Overview", icon: Home }, { href: "/account/trips", label: "My trips", icon: PlaneTakeoff }, { href: "/account/documents", label: "Documents", icon: FileText }, { href: "/account/payments", label: "Payments", icon: CreditCard }, { href: "/account/messages", label: "Messages", icon: MessageSquare }, { href: "/account/profile", label: "Profile", icon: UserRound }];
+export function PortalShell({ activePath, children }: { activePath: string; children: React.ReactNode }) { return <main className="portal-shell"><aside className="portal-sidebar"><div className="portal-sidebar__brand"><span>✦</span><strong>MY TOMS</strong></div><nav>{links.map(({ href, label, icon: Icon }) => <Button key={href} variant="ghost" className={activePath === href || (href !== "/account" && activePath.startsWith(`${href}/`)) ? "is-active" : ""} render={<Link href={href} />}><Icon />{label}</Button>)}</nav><Button variant="ghost" render={<Link href="/login" />}><LogOut />Sign out</Button></aside><section className="portal-content">{children}</section></main>; }

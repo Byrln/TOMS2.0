@@ -6,6 +6,7 @@ import { createApp } from "./app";
 import { readEnv } from "./env";
 import { createJwtVerifier } from "./plugins/auth.plugin";
 import { createProductionServices } from "./production-services";
+import { createDemoServices, demoAccessToken } from "./demo-services";
 
 // The API package runs from apps/api, while workspace environment files live at the repository root.
 for (const fileName of [".env.local", ".env"]) {
@@ -22,7 +23,7 @@ for (const fileName of [".env.local", ".env"]) {
 const env = readEnv();
 
 let databaseClient: DatabaseClient | undefined;
-if (env.DATABASE_URL) databaseClient = createDatabaseClient(env.DATABASE_URL);
+if (env.TOMS_DEMO_MODE !== "1" && env.DATABASE_URL) databaseClient = createDatabaseClient(env.DATABASE_URL);
 if (env.NODE_ENV === "production" && !databaseClient) {
   throw new Error("DATABASE_URL is required in production");
 }
@@ -36,8 +37,10 @@ const issuer = env.SUPABASE_JWT_ISSUER ?? (env.NEXT_PUBLIC_SUPABASE_URL
 
 const app = createApp({
   adapter: node(),
-  ...(databaseClient ? { services: createProductionServices(databaseClient) } : {}),
-  ...(jwksUrl && issuer
+  ...(env.TOMS_DEMO_MODE === "1" ? { services: createDemoServices() } : databaseClient ? { services: createProductionServices(databaseClient) } : {}),
+  ...(env.TOMS_DEMO_MODE === "1"
+    ? { verifyAccessToken: async () => demoAccessToken }
+    : jwksUrl && issuer
     ? { verifyAccessToken: createJwtVerifier({ jwksUrl, issuer, audience: env.SUPABASE_JWT_AUDIENCE }) }
     : {}),
   logLevel: env.LOG_LEVEL,

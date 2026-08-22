@@ -1,35 +1,28 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
-import { MetricCard, StatusBadge } from "@toms/admin-ui";
+import { AlertTriangle, ArrowUpRight, CalendarClock } from "lucide-react";
+import { Button, Card, CardContent, CardHeader, CardTitle, MetricCard, Progress, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@toms/admin-ui";
 import { formatCurrencyMinor } from "@toms/config";
 import { intlLocale, statusLabel } from "@toms/i18n";
 import { getAdminJson } from "@/lib/api";
 import { getServerI18n } from "@/lib/i18n";
+import { BookingValueChart, DepartureHealthChart } from "./dashboard-charts";
 
 type DashboardData = {
-  metrics: { grossBookingValueMinor: number; confirmedBookings: number; upcomingDepartures: number; travelers: number; storefrontConversion: number };
-  revenueTrend: number[];
-  bookingsByStatus: Array<{ status: string; count: number }>;
-  upcomingDepartures: Array<{ id: string; tourName: string; startsOn: string; confirmedCount: number; capacity: number; status: string }>;
+  metrics: { grossBookingValue: { amountMinor: number; currency: string }; confirmedBookings: number; upcomingDepartures: number; travelers: number; averageBookingValue: { amountMinor: number; currency: string } };
+  trend: Array<{ period: string; bookingValueMinor: number; bookingCount: number }>;
+  departureHealth: { ready: number; attention: number; atRisk: number; averageOccupancyPercent: number };
+  risks: Array<{ id: string; severity: string; title: string; dueOn: string; href: string }>;
+  upcomingDepartures: Array<{ id: string; tourName: string; code: string; startsOn: string; confirmedCount: number; capacity: number; status: string; readinessPercent: number; riskCount: number }>;
+  recentBookings: Array<{ id: string; bookingNumber: string; customerName: string; tourName: string; totalMinor: number; currency: string; status: string; paymentStatus: string }>;
 };
 
 export async function DashboardSection() {
   const [{ locale, t }, data] = await Promise.all([getServerI18n(), getAdminJson<DashboardData>("/api/v1/admin/dashboard")]);
-  const max = Math.max(...data.revenueTrend, 1);
-  const confirmed = Math.max(1, data.metrics.confirmedBookings);
-  const date = (value: string) => new Intl.DateTimeFormat(intlLocale(locale), { year: "numeric", month: "short", day: "2-digit" }).format(new Date(value));
-  return <>
-    <div className="metric-grid">
-      <MetricCard label={t("dashboard.revenue")} value={formatCurrencyMinor(data.metrics.grossBookingValueMinor, "MNT", intlLocale(locale))} />
-      <MetricCard label={t("dashboard.bookings")} value={data.metrics.confirmedBookings.toLocaleString(intlLocale(locale))} />
-      <MetricCard label={t("dashboard.departures")} value={String(data.metrics.upcomingDepartures)} />
-      <MetricCard label={t("dashboard.travelers")} value={data.metrics.travelers.toLocaleString(intlLocale(locale))} />
-      <MetricCard label={t("storefront.conversion")} value={`${data.metrics.storefrontConversion}%`} tone="info" />
-    </div>
-    <div className="dashboard-grid">
-      <section className="panel"><div className="panel__header"><h2>{t("dashboard.revenueTrend")}</h2><StatusBadge tone="info">{t("admin.lastTwelveMonths")}</StatusBadge></div><div className="panel__body"><div className="bar-chart" aria-label={t("admin.revenueChart")}>{data.revenueTrend.length === 0 ? <p>{t("state.empty")}</p> : data.revenueTrend.map((value, index) => <span key={index} style={{ "--bar": `${Math.round(value / max * 100)}%` } as React.CSSProperties} title={t("admin.valueMillions", { value })} />)}</div></div></section>
-      <section className="panel"><div className="panel__header"><h2>{t("admin.bookingStatus")}</h2></div><div className="panel__body status-stack">{data.bookingsByStatus.length === 0 ? <p>{t("state.empty")}</p> : data.bookingsByStatus.map((item) => <div className="status-stack__row" key={item.status}><span>{statusLabel(locale, item.status)}</span><strong>{item.count}</strong><div><span style={{ width: `${Math.min(100, item.count / confirmed * 100)}%` }} /></div></div>)}</div></section>
-    </div>
-    <section className="panel data-panel" style={{ marginTop: 14 }}><div className="panel__header"><h2>{t("admin.latestDepartures")}</h2><Link href="/departures">{t("admin.viewAll")} →</Link></div><div className="data-table-wrap"><table className="data-table"><thead><tr><th>{t("admin.tour")}</th><th>{t("admin.startDate")}</th><th>{t("admin.capacity")}</th><th>{t("admin.status")}</th><th></th></tr></thead><tbody>{data.upcomingDepartures.length === 0 ? <tr><td colSpan={5} className="data-table__empty">{t("state.empty")}</td></tr> : data.upcomingDepartures.map((item) => <tr key={item.id}><td><strong>{item.tourName}</strong></td><td>{date(item.startsOn)}</td><td>{item.confirmedCount} / {item.capacity}</td><td><StatusBadge tone="success">{statusLabel(locale, item.status)}</StatusBadge></td><td className="align-right"><ArrowUpRight size={15} /></td></tr>)}</tbody></table></div></section>
-  </>;
+  const currencyLocale = intlLocale(locale);
+  return <div className="dashboard-stack">
+    <div className="metric-grid"><MetricCard label={t("dashboard.revenue")} value={formatCurrencyMinor(data.metrics.grossBookingValue.amountMinor, data.metrics.grossBookingValue.currency, currencyLocale)} /><MetricCard label={t("dashboard.bookings")} value={data.metrics.confirmedBookings.toLocaleString(currencyLocale)} /><MetricCard label={t("dashboard.departures")} value={String(data.metrics.upcomingDepartures)} tone="info" /><MetricCard label={t("dashboard.travelers")} value={data.metrics.travelers.toLocaleString(currencyLocale)} /><MetricCard label="Average booking" value={formatCurrencyMinor(data.metrics.averageBookingValue.amountMinor, data.metrics.averageBookingValue.currency, currencyLocale)} tone="info" /></div>
+    <div className="dashboard-grid dashboard-grid--charts"><Card><CardHeader><CardTitle>Booking value</CardTitle><StatusBadge tone="info">12 months</StatusBadge></CardHeader><CardContent><BookingValueChart data={data.trend} /></CardContent></Card><Card><CardHeader><CardTitle>Departure health</CardTitle><StatusBadge tone={data.departureHealth.atRisk > 0 ? "warning" : "success"}>{data.departureHealth.averageOccupancyPercent}% occupied</StatusBadge></CardHeader><CardContent className="health-card"><DepartureHealthChart data={data.departureHealth} /><div className="health-legend"><span><i className="health-ready" />Ready <strong>{data.departureHealth.ready}</strong></span><span><i className="health-attention" />Attention <strong>{data.departureHealth.attention}</strong></span><span><i className="health-risk" />At risk <strong>{data.departureHealth.atRisk}</strong></span></div></CardContent></Card></div>
+    <div className="dashboard-grid dashboard-grid--operations"><Card><CardHeader><CardTitle>Upcoming departures</CardTitle><Button variant="link" render={<Link href="/departures" />}>{t("admin.viewAll")}<ArrowUpRight /></Button></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>{t("admin.tour")}</TableHead><TableHead>{t("admin.startDate")}</TableHead><TableHead>{t("admin.capacity")}</TableHead><TableHead>Readiness</TableHead><TableHead>{t("admin.status")}</TableHead></TableRow></TableHeader><TableBody>{data.upcomingDepartures.map((item) => <TableRow key={item.id}><TableCell><div className="primary-cell"><strong>{item.tourName}</strong><span>{item.code}</span></div></TableCell><TableCell>{item.startsOn}</TableCell><TableCell><div className="progress-cell"><span>{item.confirmedCount} / {item.capacity}</span><Progress value={item.confirmedCount / item.capacity * 100} /></div></TableCell><TableCell>{item.readinessPercent}%</TableCell><TableCell><StatusBadge tone={item.status === "CANCELLED" ? "danger" : item.status === "OPEN" ? "warning" : "success"}>{statusLabel(locale, item.status)}</StatusBadge></TableCell></TableRow>)}</TableBody></Table></CardContent></Card><Card><CardHeader><CardTitle>Risk queue</CardTitle><StatusBadge tone="danger">{data.risks.length} open</StatusBadge></CardHeader><CardContent className="risk-list">{data.risks.map((risk) => <Link href={risk.href} key={risk.id}><span className={`risk-icon risk-icon--${risk.severity.toLowerCase()}`}>{risk.severity === "CRITICAL" ? <AlertTriangle /> : <CalendarClock />}</span><span><strong>{risk.title}</strong><small>Due {risk.dueOn}</small></span><ArrowUpRight /></Link>)}</CardContent></Card></div>
+    <Card><CardHeader><CardTitle>Recent bookings</CardTitle><Button variant="link" render={<Link href="/bookings" />}>{t("admin.viewAll")}<ArrowUpRight /></Button></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>{t("admin.bookingNumber")}</TableHead><TableHead>{t("nav.customers")}</TableHead><TableHead>{t("admin.tour")}</TableHead><TableHead>{t("admin.status")}</TableHead><TableHead>{t("admin.paymentStatus")}</TableHead><TableHead className="align-right">{t("admin.total")}</TableHead></TableRow></TableHeader><TableBody>{data.recentBookings.map((item) => <TableRow key={item.id}><TableCell><strong>{item.bookingNumber}</strong></TableCell><TableCell>{item.customerName}</TableCell><TableCell>{item.tourName}</TableCell><TableCell><StatusBadge tone={item.status === "CONFIRMED" ? "success" : item.status === "CANCELLED" ? "danger" : "warning"}>{statusLabel(locale, item.status)}</StatusBadge></TableCell><TableCell><StatusBadge tone={item.paymentStatus === "PAID" ? "success" : item.paymentStatus === "FAILED" ? "danger" : "warning"}>{statusLabel(locale, item.paymentStatus)}</StatusBadge></TableCell><TableCell className="align-right"><strong>{formatCurrencyMinor(item.totalMinor, item.currency, currencyLocale)}</strong></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
+  </div>;
 }

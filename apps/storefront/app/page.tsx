@@ -1,111 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Search } from "lucide-react";
-import { TourCard, TrustStrip } from "@toms/storefront-ui";
-import { getBootstrap } from "@/lib/api";
+import { ArrowRight, CalendarDays, MapPin, Search, UsersRound } from "lucide-react";
+import { Button, Field, FieldLabel, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TourCard, TrustStrip } from "@toms/storefront-ui";
+import { getHome } from "@/lib/api";
 import { getServerI18n } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
-
 export default async function Home() {
-  const data = await getBootstrap();
-  const { t } = await getServerI18n();
-  const hero = data.featuredTours[3] ?? data.featuredTours[0];
-  if (!hero) return null;
-  return (
-    <main>
-      <section className="hero">
-        <Image
-          src={hero.heroImageUrl}
-          alt={hero.name}
-          fill
-          loading="eager"
-          fetchPriority="high"
-          sizes="100vw"
-        />
-        <div className="hero__content">
-          <h1>{t("public.heroTitle")}</h1>
-          <p>{t("public.heroDescription")}</p>
-          <div className="hero__actions">
-            <Link className="primary-link" href="/tours">
-              {t("public.findTrip")} <ArrowRight size={16} />
-            </Link>
-            <Link className="secondary-link" href="/about">
-              {t("nav.about")}
-            </Link>
-          </div>
-        </div>
-      </section>
-      <form className="search-panel" action="/tours">
-        <label className="field">
-          <span>{t("public.where")}</span>
-          <input name="q" placeholder={t("public.searchExample")} />
-        </label>
-        <label className="field">
-          <span>{t("public.when")}</span>
-          <input type="month" name="month" defaultValue="2026-10" />
-        </label>
-        <label className="field">
-          <span>{t("public.tripType")}</span>
-          <select name="type">
-            <option>{t("public.allTours")}</option>
-            <option>{t("public.adventure")}</option>
-            <option>{t("public.cultural")}</option>
-          </select>
-        </label>
-        <button type="submit">
-          <Search size={15} /> {t("common.search")}
-        </button>
-      </form>
-      <section className="section">
-        <div className="page-container">
-          <header className="section-header">
-            <div>
-              <h2>{t("public.featuredTours")}</h2>
-              <p>{t("public.featuredDescription")}</p>
-            </div>
-            <Link href="/tours">{t("public.viewAll")} →</Link>
-          </header>
-          <div className="tour-grid">
-            {data.featuredTours.slice(0, 4).map((tour) => (
-              <TourCard
-                key={tour.id}
-                tour={{
-                  slug: tour.slug,
-                  name: tour.name,
-                  summary: tour.summary,
-                  heroImageUrl: tour.heroImageUrl,
-                  durationDays: tour.durationDays,
-                  priceMinor: tour.basePriceMinor,
-                  currency: tour.currency,
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-      <TrustStrip />
-      <section className="section">
-        <div className="page-container promo-banner">
-          <div>
-            <h2>{t("public.earlyBooking")}</h2>
-            <p>{t("public.promotionDescription")}</p>
-            <Link className="primary-link" href="/promotions">
-              {t("public.viewPromotions")}
-            </Link>
-          </div>
-          <div className="promo-codes">
-            {data.storefront.promotions.map((promotion) => (
-              <div className="promo-code" key={promotion.id}>
-                <strong>{promotion.code}</strong>
-                <span>
-                  {promotion.name} · {promotion.benefit}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-    </main>
-  );
+  const [data, { t }] = await Promise.all([getHome(), getServerI18n()]);
+  return <main>
+    <section className="hero"><Image src={data.hero.image.url} alt={data.hero.image.alt} fill loading="eager" fetchPriority="high" sizes="100vw" /><div className="hero__veil" /><div className="hero__content"><p className="hero__eyebrow">{data.hero.eyebrow}</p><h1>{data.hero.title}</h1><p>{data.hero.description}</p><div className="hero__actions"><Button size="lg" render={<Link href={data.hero.primaryAction.href} />}>{data.hero.primaryAction.label}<ArrowRight /></Button><Button size="lg" variant="outline" render={<Link href="/about" />}>{t("nav.about")}</Button></div></div></section>
+    <form className="search-panel" action="/tours"><Field><FieldLabel htmlFor="destination"><MapPin />{t("public.where")}</FieldLabel><Select name="q"><SelectTrigger id="destination"><SelectValue placeholder={t("public.searchExample")} /></SelectTrigger><SelectContent>{data.search.destinations.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></Field><Field><FieldLabel htmlFor="month"><CalendarDays />{t("public.when")}</FieldLabel><Select name="month" defaultValue={data.search.months[0]?.value}><SelectTrigger id="month"><SelectValue /></SelectTrigger><SelectContent>{data.search.months.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></Field><Field><FieldLabel htmlFor="travelers"><UsersRound />Travelers</FieldLabel><Input id="travelers" name="travelers" type="number" min={1} max={18} defaultValue={2} /></Field><Button type="submit" size="lg"><Search />{t("common.search")}</Button></form>
+    <TrustStrip items={data.trustItems} />
+    <section className="section editorial-section"><div className="page-container"><header className="section-header"><div><p className="section-eyebrow">CURATED JOURNEYS</p><h2>{t("public.featuredTours")}</h2><p>{t("public.featuredDescription")}</p></div><Button variant="link" render={<Link href="/tours" />}>{t("public.viewAll")}<ArrowRight /></Button></header><div className="tour-grid">{data.featuredTours.map((tour) => <TourCard key={tour.id} tour={{ slug: tour.slug, name: tour.name, summary: tour.summary, heroImageUrl: tour.heroImage.url, durationDays: tour.durationDays, priceMinor: tour.priceFrom.amountMinor, currency: tour.priceFrom.currency, destination: tour.destinations.join(" · "), nextAvailableOn: tour.nextAvailableOn, availabilityLabel: tour.availabilityLabel, promotionLabel: tour.promotion?.label ?? null }} />)}</div></div></section>
+    <section className="section destination-section"><div className="page-container"><header className="section-header"><div><p className="section-eyebrow">GO SOMEWHERE EXTRAORDINARY</p><h2>{t("nav.destinations")}</h2></div><Button variant="link" render={<Link href="/destinations" />}>{t("public.viewAll")}<ArrowRight /></Button></header><div className="destination-grid">{data.featuredDestinations.map((destination, index) => <Link className={index === 0 ? "destination-card destination-card--featured" : "destination-card"} key={destination.id} href={`/destinations/${destination.slug}`}><Image src={destination.image.url} alt={destination.image.alt} fill sizes="(max-width: 768px) 90vw, 33vw" /><span><small>{destination.region}</small><strong>{destination.name}</strong><em>{destination.tourCount} journeys</em></span></Link>)}</div></div></section>
+    {data.promotion ? <section className="section"><div className="page-container campaign-banner"><Image src={data.promotion.image.url} alt={data.promotion.image.alt} fill sizes="90vw" /><div><p className="section-eyebrow">LIMITED JOURNEY</p><h2>{data.promotion.title}</h2><p>{data.promotion.description}</p><Button variant="secondary" render={<Link href={data.promotion.href} />}>{t("public.viewPromotions")}<ArrowRight /></Button></div></div></section> : null}
+    {data.editorial.map((item) => <section className="section story-split" key={item.id}><div className="page-container"><div className="story-split__image"><Image src={item.image.url} alt={item.image.alt} fill sizes="(max-width: 768px) 100vw, 50vw" /></div><div><p className="section-eyebrow">{item.eyebrow}</p><h2>{item.title}</h2><p>{item.body}</p>{item.href ? <Button variant="outline" render={<Link href={item.href} />}>Discover our story<ArrowRight /></Button> : null}</div></div></section>)}
+    <section className="section final-cta"><div className="page-container"><p className="section-eyebrow">YOUR NEXT STORY</p><h2>Where will you go next?</h2><p>Tell us what moves you. We’ll shape the details around it.</p><Button size="lg" render={<Link href="/contact" />}>Start planning<ArrowRight /></Button></div></section>
+  </main>;
 }

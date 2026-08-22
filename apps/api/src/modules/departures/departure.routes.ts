@@ -12,6 +12,9 @@ export function departureModule(services: ApiServices | undefined, verifyAccessT
   };
   return new Elysia({ name: "module.departures", prefix: "/api/v1/admin/departures" })
     .get("", async ({ request }) => services!.departures.list(await authenticate(request.headers)), { detail: { tags: ["Departures"], summary: "List departures" } })
+    .get("/:id", async ({ request, params }) => services!.departures.get(await authenticate(request.headers), params.id), { detail: { tags: ["Departures"], summary: "Read departure" } })
+    .get("/:id/readiness", async ({ request, params }) => services!.departures.readiness(await authenticate(request.headers), params.id), { detail: { tags: ["Departures", "Operations"], summary: "Read departure readiness" } })
+    .get("/:id/manifest", async ({ request, params }) => services!.departures.manifest(await authenticate(request.headers), params.id), { detail: { tags: ["Departures", "Travelers"], summary: "Read departure manifest" } })
     .post("", async ({ request, body, set }) => {
       const result = await services!.departures.create(await authenticate(request.headers), createDepartureSchema.parse(body));
       set.status = 201;

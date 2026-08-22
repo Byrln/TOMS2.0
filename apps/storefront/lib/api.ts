@@ -1,14 +1,15 @@
 import { headers } from "next/headers";
+import type {
+  StorefrontBootstrapResponse, StorefrontCheckoutContext, StorefrontDepartureResponse,
+  StorefrontDestinationsResponse, StorefrontHomeResponse, StorefrontTourDetailResponse,
+  StorefrontToursResponse, TravelerDashboardResponse, TravelerDocumentsResponse,
+  TravelerMessagesResponse, TravelerPaymentsResponse, TravelerProfileResponse,
+  TravelerTripResponse, TravelerTripsResponse,
+} from "@toms/contracts";
 import { createTravelerSupabaseClient } from "./supabase-server";
 import { getServerI18n } from "./i18n";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-
-export type Departure = { id: string; tourId: string; code: string; startsOn: string; endsOn: string; capacity: number; confirmedCount: number; priceMinor: number; currency: string; status: string };
-export type Tour = { id: string; slug: string; name: string; summary: string; description: string; durationDays: number; durationNights: number; basePriceMinor: number; currency: string; status: string; destinations: string[]; heroImageUrl: string; highlights: string[]; inclusions: string[]; departures: Departure[] };
-export type Bootstrap = { tenant: { name: string; slug: string }; storefront: { name: string; promotions: Array<{ id: string; name: string; code: string; benefit: string }> }; featuredTours: Tour[] };
-export type Booking = { id: string; bookingNumber: string; departureId: string; tourId: string; organizerEmail: string; payerName: string; travelers: Array<{id:string;fullName:string;nationality:string}>; partySize: number; status: string; paymentStatus: string; currency: string; totalMinor: number; invoiceNumber: string; createdAt: string };
-export type Trip = Booking & { tour: Tour; departure: Departure; itinerary: Array<{ id:string; title:string; startsAt:string; location?:string; details?:string }> };
 
 async function getJson<T>(path: string, requestHeaders?: HeadersInit): Promise<T> {
   const response = await fetch(`${apiUrl}${path}`, { cache: "no-store", ...(requestHeaders === undefined ? {} : { headers: requestHeaders }) });
@@ -22,27 +23,35 @@ async function publicContext() {
   return { locale, requestHeaders: { "x-toms-storefront-host": host } };
 }
 
-export const getBootstrap = async () => {
-  const context = await publicContext();
-  return getJson<Bootstrap>(`/api/v1/storefront/bootstrap?locale=${context.locale}`, context.requestHeaders);
-};
-export const getTours = async () => {
-  const context = await publicContext();
-  return (await getJson<{ items: Tour[] }>(`/api/v1/tours?locale=${context.locale}`, context.requestHeaders)).items;
-};
-export const getTour = async (slug: string) => {
-  const context = await publicContext();
-  return getJson<Tour>(`/api/v1/tours/${slug}?locale=${context.locale}`, context.requestHeaders);
-};
+async function publicGet<T>(path: string) { const context = await publicContext(); const separator = path.includes("?") ? "&" : "?"; return getJson<T>(`${path}${separator}locale=${context.locale}`, context.requestHeaders); }
 
-async function getTravelerJson<T>(path: string): Promise<T> {
-  const [supabase, context] = await Promise.all([createTravelerSupabaseClient(), publicContext()]);
+export const getBootstrap = () => publicGet<StorefrontBootstrapResponse>("/api/v1/storefront/bootstrap");
+export const getHome = () => publicGet<StorefrontHomeResponse>("/api/v1/storefront/home");
+export const getTours = (query = "") => publicGet<StorefrontToursResponse>(`/api/v1/storefront/tours${query ? `?${query}` : ""}`);
+export const getTour = (slug: string) => publicGet<StorefrontTourDetailResponse>(`/api/v1/storefront/tours/${slug}`);
+export const getDestinations = (query = "") => publicGet<StorefrontDestinationsResponse>(`/api/v1/storefront/destinations${query ? `?${query}` : ""}`);
+export const getDestination = <T>(slug: string) => publicGet<T>(`/api/v1/storefront/destinations/${slug}`);
+export const getDeparture = (id: string) => publicGet<StorefrontDepartureResponse>(`/api/v1/storefront/departures/${id}`);
+export const getCheckoutContext = (id: string) => publicGet<StorefrontCheckoutContext>(`/api/v1/storefront/departures/${id}/checkout-context`);
+export const getPromotions = <T>() => publicGet<T>("/api/v1/storefront/promotions");
+export const getCmsPage = <T>(slug: string) => publicGet<T>(`/api/v1/storefront/pages/${slug}`);
+
+async function travelerGet<T>(path: string): Promise<T> {
+  const context = await publicContext();
+  const localizedPath = `${path}${path.includes("?") ? "&" : "?"}locale=${context.locale}`;
+  if (process.env.TOMS_DEMO_MODE === "1") return getJson<T>(localizedPath, { ...context.requestHeaders, authorization: "Bearer toms-demo-access-token" });
+  const supabase = await createTravelerSupabaseClient();
   if (!supabase) throw new Error("Supabase server configuration is missing");
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session?.access_token) throw new Error("An authenticated traveler session is required");
-  const localizedPath = `${path}${path.includes("?") ? "&" : "?"}locale=${context.locale}`;
   return getJson<T>(localizedPath, { ...context.requestHeaders, authorization: `Bearer ${data.session.access_token}` });
 }
 
-export const getTrips = async () => (await getTravelerJson<{ items: Booking[] }>("/api/v1/me/trips")).items;
-export const getTrip = (id: string) => getTravelerJson<Trip>(`/api/v1/me/trips/${id}`);
+export const getTravelerDashboard = () => travelerGet<TravelerDashboardResponse>("/api/v1/me/dashboard");
+export const getTrips = () => travelerGet<TravelerTripsResponse>("/api/v1/me/trips");
+export const getTrip = (id: string) => travelerGet<TravelerTripResponse>(`/api/v1/me/trips/${id}`);
+export const getTripTimeline = <T>(id: string) => travelerGet<T>(`/api/v1/me/trips/${id}/timeline`);
+export const getTripDocuments = (id: string) => travelerGet<TravelerDocumentsResponse>(`/api/v1/me/trips/${id}/documents`);
+export const getTripPayments = (id: string) => travelerGet<TravelerPaymentsResponse>(`/api/v1/me/trips/${id}/payments`);
+export const getMessages = () => travelerGet<TravelerMessagesResponse>("/api/v1/me/messages");
+export const getProfile = () => travelerGet<TravelerProfileResponse>("/api/v1/me/profile");

@@ -5,6 +5,7 @@ import { staffIdentityFromClaims } from "@toms/auth";
 const publicPaths = ["/admin/login", "/admin/forgot-password", "/admin/reset-password", "/admin/auth/callback"];
 
 export default async function proxy(request: NextRequest) {
+  if (process.env.TOMS_DEMO_MODE === "1") return NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const isPublic = publicPaths.some((path) => request.nextUrl.pathname.startsWith(path));

@@ -1,3 +1,9 @@
-import TripsPage from "@/app/trips/page";
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight, CalendarDays } from "lucide-react";
+import { Button, Progress, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@toms/storefront-ui";
+import { getTrips } from "@/lib/api";
+import { PortalShell } from "@/components/portal-shell";
+
 export const dynamic = "force-dynamic";
-export default TripsPage;
+export default async function TripsPage() { const data = await getTrips(); const cards = data.items.map((item) => <article className="portal-trip-card" key={item.booking.id}><div><Image src={item.trip.heroImageUrl} alt={item.trip.tourName} fill sizes="(max-width: 768px) 100vw, 320px" /><StatusBadge tone="success">{item.booking.status}</StatusBadge></div><section><p>DEPARTING IN {item.trip.daysUntilDeparture} DAYS</p><h2>{item.trip.tourName}</h2><span><CalendarDays />{item.trip.startsOn} → {item.trip.endsOn}</span><div><span>Readiness <strong>{item.readiness.overallPercent}%</strong></span><Progress value={item.readiness.overallPercent} /></div><Button render={<Link href={`/account/trips/${item.booking.id}`} />}>View trip<ArrowRight /></Button></section></article>); return <PortalShell activePath="/account/trips"><header className="portal-header"><div><p className="section-eyebrow">YOUR JOURNEYS</p><h1>My trips</h1><p>Upcoming plans, past journeys and every detail in between.</p></div></header><Tabs defaultValue="upcoming"><TabsList><TabsTrigger value="upcoming">Upcoming ({data.page.total})</TabsTrigger><TabsTrigger value="past">Past</TabsTrigger></TabsList><TabsContent value="upcoming"><div className="portal-trip-grid">{cards}</div></TabsContent><TabsContent value="past"><div className="portal-empty"><h2>No past trips yet</h2><p>Your travel history will appear here.</p></div></TabsContent></Tabs></PortalShell>; }
